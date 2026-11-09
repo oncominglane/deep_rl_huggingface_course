@@ -1,0 +1,44 @@
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Local training artifacts
+*.zip
+*.mp4
+*.gif
+*.avi
+*.mov
+*.mkv
+*.pth
+*.pt
+*.pkl
+*.npz
+*.npy
+videos/
+logs/
+runs/
+tensorboard/
+
+# Hugging Face / Stable-Baselines local outputs
+replay.mp4
+results.json
+config.json
+system_info.txt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
