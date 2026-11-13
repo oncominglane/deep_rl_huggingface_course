@@ -1,0 +1,1950 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 8 (full MDX study edition).
+% Compile with latexmk -pdf from notes/ru/ using ../preamble.tex.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit8/}}
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Hugging Face Deep RL / Модуль 8}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Алгоритм PPO}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 8: оптимизация политики PPO}
+\author{Курс Hugging Face Deep RL\\\small Полная учебная версия на основе MDX}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Источник: курс Hugging Face Deep RL (оригинал на английском языке).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Введение}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Обложка модуля 8 курса Hugging Face Deep RL: алгоритм PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/thumbnail.png}{[оригинал]}}
+
+В модуле 6 мы познакомились с архитектурой Advantage Actor-Critic (A2C) --- гибридным подходом, объединяющим методы на основе ценности и методы на основе политики. Он помогает стабилизировать обучение за счёт уменьшения дисперсии благодаря двум компонентам:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Актор (Actor)} определяет, \textbf{как ведёт себя агент}, то есть задаёт политику.
+\item
+  \emph{Критик (Critic)} оценивает, \textbf{насколько хорошим было выбранное действие}, используя метод на основе ценности.
+\end{itemize}
+
+Сегодня мы изучим Proximal Policy Optimization (PPO) --- алгоритм, который \textbf{повышает устойчивость обучения агента, предотвращая чрезмерно большие обновления политики}. Для этого используется отношение вероятностей, показывающее различие между текущей и предыдущей политиками. Это отношение ограничивается интервалом \([1 - \epsilon, 1 + \epsilon]\).
+
+Таким образом мы добиваемся того, \textbf{чтобы обновления политики не были слишком большими и обучение оставалось устойчивым}.
+
+Модуль состоит из двух частей:
+
+\begin{itemize}
+\tightlist
+\item
+  В первой части вы изучите теорию PPO и реализуете собственного PPO-агента с нуля на основе реализации \href{https://github.com/vwxyzjn/cleanrl}{CleanRL}. Чтобы проверить его устойчивость, вы используете среду LunarLander-v2. Именно LunarLander-v2 \textbf{была вашей первой средой в начале курса}. Тогда вы ещё не знали, как работает PPO, а теперь \textbf{сможете самостоятельно реализовать этот алгоритм и обучить агента}!
+\item
+  Во второй части мы подробнее рассмотрим оптимизацию PPO с помощью \href{https://samplefactory.dev/}{Sample-Factory} и обучим агента играть в ViZDoom --- открытую реализацию игры Doom.
+\end{itemize}
+
+\CourseFigure{environments.png}{Игровые среды ViZDoom, используемые для обучения агентов \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/environments.png}{[оригинал]}}
+
+Звучит интересно? Тогда приступим!
+
+\section{Интуиция, лежащая в основе PPO}\label{the-intuition-behind-ppo}
+
+Основная идея Proximal Policy Optimization (PPO) состоит в повышении устойчивости обучения политики за счёт ограничения её изменения на каждой эпохе: \textbf{мы хотим избежать слишком больших шагов обновления политики}.
+
+Для этого есть две причины:
+
+\begin{itemize}
+\tightlist
+\item
+  Из практики известно, что небольшие обновления политики во время обучения \textbf{с большей вероятностью приводят к сходимости к оптимальному решению}.
+\item
+  Слишком большой шаг обновления может привести к «падению с обрыва»: мы получим плохую политику, \textbf{после чего восстановление может занять очень много времени или даже стать невозможным}.
+\end{itemize}
+
+\CourseFigure{cliff.jpg}{Небольшие обновления политики повышают устойчивость обучения (адаптация пояснения PPO Джонатана Хуи) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/cliff.jpg}{[оригинал]}}
+
+\textbf{Поэтому в PPO политика обновляется осторожно}. Чтобы реализовать этот принцип, необходимо измерять, насколько текущая политика отличается от предыдущей. Для этого рассчитывается отношение вероятностей действий при текущей и старой политиках. Затем отношение ограничивается диапазоном \([1 - \epsilon, 1 + \epsilon]\). Тем самым мы \textbf{устраняем стимул для новой политики слишком сильно отклоняться от старой} --- отсюда и термин \emph{proximal} в названии алгоритма.
+
+\section{Знакомство с суррогатной целевой функцией с ограничением}\label{introducing-the-clipped-surrogate-objective-function}
+
+\subsection{Повторение: целевая функция политики}\label{recap-the-policy-objective-function}
+
+Вспомним, какую целевую функцию мы оптимизировали в REINFORCE:
+
+\CourseFigure{lpg.jpg}{Целевая функция градиента политики в алгоритме REINFORCE \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/lpg.jpg}{[оригинал]}}
+
+Идея заключалась в том, что шаг градиентного подъёма по этой функции (эквивалентный градиентному спуску по её отрицанию) должен \textbf{побуждать агента выбирать действия, которые приносят более высокое вознаграждение, и избегать неудачных действий}.
+
+Однако здесь возникает проблема с величиной шага:
+
+\begin{itemize}
+\tightlist
+\item
+  Если шаг слишком мал, \textbf{обучение идёт слишком медленно}.
+\item
+  Если шаг слишком велик, \textbf{процесс обучения становится слишком нестабильным}.
+\end{itemize}
+
+В PPO обновление политики ограничивается с помощью новой целевой функции --- \emph{Clipped Surrogate Objective Function}, или суррогатной целевой функции с ограничением. Она \textbf{сдерживает изменение политики внутри небольшого диапазона посредством отсечения (clipping)}.
+
+Эта функция \textbf{призвана предотвращать чрезмерно большие и разрушительные обновления весов}:
+
+\CourseFigure{ppo-surrogate.jpg}{Суррогатная целевая функция PPO с ограничением (clipping) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/ppo-surrogate.jpg}{[оригинал]}}
+
+Разберём её по частям, чтобы понять принцип работы.
+
+\subsection{Функция отношения вероятностей}\label{the-ratio-function}
+
+\CourseFigure{ratio1.jpg}{Отношение вероятностей действия для старой и новой политик \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/ratio1.jpg}{[оригинал]}}
+
+Это отношение вычисляется следующим образом:
+
+\CourseFigure{ratio2.jpg}{Определение отношения вероятностей политик в PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/ratio2.jpg}{[оригинал]}}
+
+В числителе находится вероятность выбрать действие \(a_t\) в состоянии \(s_t\) согласно текущей политике, а в знаменателе --- вероятность того же действия согласно предыдущей политике.
+
+Таким образом, \(r_t(\theta)\) обозначает отношение вероятностей текущей и старой политик:
+
+\begin{itemize}
+\tightlist
+\item
+  Если \(r_t(\theta) > 1\), то \textbf{действие \(a_t\) в состоянии \(s_t\) с большей вероятностью будет выбрано текущей политикой, чем старой}.
+\item
+  Если \(r_t(\theta)\) находится между 0 и 1, то \textbf{вероятность этого действия для текущей политики ниже, чем для старой}.
+\end{itemize}
+
+Следовательно, это отношение вероятностей позволяет \textbf{удобным способом оценивать различия между старой и текущей политиками}.
+
+\subsection{Часть суррогатной целевой функции без ограничения}\label{the-unclipped-part-of-the-clipped-surrogate-objective-function}
+
+\CourseFigure{unclipped1.jpg}{Суррогатная целевая функция PPO без ограничения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/unclipped1.jpg}{[оригинал]}}
+
+Это отношение \textbf{может заменить логарифм вероятности, который мы использовали в целевой функции политики}. Так получается левая часть новой целевой функции: произведение отношения вероятностей на преимущество (advantage).
+
+\CourseFigure{unclipped2.jpg}{Формула из статьи «Proximal Policy Optimization Algorithms» (https://arxiv.org/pdf/1707.06347.pdf) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/unclipped2.jpg}{[оригинал]}}
+
+Однако без дополнительных ограничений ситуация, когда выбранное действие стало намного вероятнее при текущей политике, чем при предыдущей, \textbf{приведёт к большому шагу градиента политики}, а значит, к \textbf{чрезмерному обновлению политики}.
+
+\subsection{Часть суррогатной целевой функции с ограничением}\label{the-clipped-part-of-the-clipped-surrogate-objective-function}
+
+\CourseFigure{clipped.jpg}{Ограничение отношения вероятностей в PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/clipped.jpg}{[оригинал]}}
+
+Поэтому целевую функцию необходимо ограничить, штрафуя за изменения, при которых отношение вероятностей далеко уходит от единицы (в статье допустимый диапазон составляет от 0{,}8 до 1{,}2).
+
+\textbf{Ограничивая отношение вероятностей, мы не допускаем слишком большого обновления политики, поскольку текущая политика не может слишком сильно отличаться от старой}.
+
+Для этого существуют два подхода:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{TRPO (Trust Region Policy Optimization)} накладывает ограничение через KL-дивергенцию вне целевой функции, сдерживая изменение политики. Однако \textbf{этот метод сложен в реализации и требует больших вычислительных затрат}.
+\item
+  \emph{PPO} ограничивает отношение вероятностей непосредственно внутри целевой функции посредством \textbf{суррогатной функции с отсечением}.
+\end{itemize}
+
+\CourseFigure{clipped.jpg}{Ограничение отношения вероятностей в PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/clipped.jpg}{[оригинал]}}
+
+В ограниченной части функции величина \(r_t(\theta)\) отсекается в пределах \([1 - \epsilon, 1 + \epsilon]\).
+
+Таким образом, в Clipped Surrogate Objective Function присутствуют два отношения вероятностей: исходное без ограничения и ограниченное интервалом \([1 - \epsilon, 1 + \epsilon]\). Параметр \(\epsilon\) --- гиперпараметр, задающий ширину интервала отсечения (в статье \(\epsilon = 0.2\)).
+
+Затем мы выбираем минимум между ограниченной и неограниченной целевыми функциями. \textbf{Итоговая функция тем самым задаёт нижнюю, или пессимистическую, оценку неограниченной функции}.
+
+Взятие минимума означает, что \textbf{в зависимости от отношения вероятностей и значения преимущества будет выбрана либо ограниченная, либо неограниченная целевая функция}.
+
+\section{Визуализация суррогатной целевой функции с ограничением}\label{visualize-the-clipped-surrogate-objective-function}
+
+Не переживайте: \textbf{если сейчас всё кажется сложным, это совершенно нормально}. Давайте посмотрим, как выглядит эта суррогатная функция с ограничением, чтобы нагляднее понять происходящее.
+
+\CourseFigure{recap.jpg}{Таблица шести случаев PPO из работы Даниэля Бика «Towards Delivering a Coherent Self-Contained Explanation of Proximal Policy Optimization» (https://fse.studenttheses.ub.rug.nl/25709/1/mAI\_2021\_BickD.pdf) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/recap.jpg}{[оригинал]}}
+
+Рассмотрим шесть различных ситуаций. Для начала вспомним, что мы всегда берём минимум из ограниченной и неограниченной целевых функций.
+
+\subsection{Случаи 1 и 2: отношение находится внутри интервала}\label{case-1-and-2-the-ratio-is-between-the-range}
+
+В случаях 1 и 2 \textbf{отсечение не срабатывает, поскольку отношение лежит внутри интервала} \([1 - \epsilon, 1 + \epsilon]\).
+
+В случае 1 преимущество положительное: \textbf{действие лучше среднего} среди возможных действий в данном состоянии. Поэтому следует поощрять текущую политику повышать вероятность этого действия в данном состоянии.
+
+Поскольку отношение находится в допустимом интервале, \textbf{мы можем увеличить вероятность выбора данного действия текущей политикой}.
+
+В случае 2 преимущество отрицательное: действие хуже среднего среди действий в данном состоянии. Следовательно, нужно поощрять текущую политику выбирать это действие реже.
+
+Поскольку отношение находится в допустимом интервале, \textbf{мы можем снизить вероятность выбора данного действия текущей политикой}.
+
+\subsection{Случаи 3 и 4: отношение ниже интервала}\label{case-3-and-4-the-ratio-is-below-the-range}
+
+\CourseFigure{recap.jpg}{Таблица шести случаев PPO из работы Даниэля Бика «Towards Delivering a Coherent Self-Contained Explanation of Proximal Policy Optimization» (https://fse.studenttheses.ub.rug.nl/25709/1/mAI\_2021\_BickD.pdf) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/recap.jpg}{[оригинал]}}
+
+Если отношение вероятностей меньше \([1 - \epsilon]\), то вероятность выбора данного действия в данном состоянии заметно ниже, чем у старой политики.
+
+Если, как в случае 3, оценка преимущества положительна (A\textgreater0), то \textbf{вероятность выбора данного действия следует увеличить}.
+
+Но если, как в случае 4, преимущество отрицательно, \textbf{мы не хотим дополнительно уменьшать} вероятность этого действия в данном состоянии. Поэтому градиент равен нулю (функция здесь постоянна), и веса не обновляются.
+
+\subsection{Случаи 5 и 6: отношение выше интервала}\label{case-5-and-6-the-ratio-is-above-the-range}
+
+\CourseFigure{recap.jpg}{Таблица шести случаев PPO из работы Даниэля Бика «Towards Delivering a Coherent Self-Contained Explanation of Proximal Policy Optimization» (https://fse.studenttheses.ub.rug.nl/25709/1/mAI\_2021\_BickD.pdf) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/recap.jpg}{[оригинал]}}
+
+Если отношение вероятностей больше \([1 + \epsilon]\), то вероятность этого действия в текущей политике \textbf{намного выше, чем в предыдущей}.
+
+Если, как в случае 5, преимущество положительно, \textbf{не следует слишком сильно повышать вероятность действия}. Она уже выше, чем в старой политике. Поэтому градиент равен нулю (на этом участке функция постоянна), и веса не обновляются.
+
+Если, как в случае 6, преимущество отрицательно, мы хотим уменьшить вероятность выбора данного действия в данном состоянии.
+
+Подведём итог: \textbf{мы обновляем политику только тогда, когда минимум соответствует неограниченной части целевой функции}. Когда минимум соответствует ограниченной части, градиент равен нулю, поэтому веса политики не изменяются.
+
+Таким образом, политика обновляется лишь при выполнении одного из условий:
+
+\begin{itemize}
+\tightlist
+\item
+  Отношение находится внутри интервала \([1 - \epsilon, 1 + \epsilon]\).
+\item
+  Отношение находится вне интервала, но \textbf{знак преимущества способствует возвращению отношения к интервалу}:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Отношение ниже нижней границы, а преимущество \textgreater{} 0.
+  \item
+    Отношение выше верхней границы, а преимущество \textless{} 0.
+  \end{itemize}
+\end{itemize}
+
+\textbf{Может возникнуть вопрос, почему при выборе ограниченной части функции градиент равен нулю.} Когда отношение отсекается, дифференцируется не выражение \(r_t(\theta) * A_t\), а \((1 - \epsilon)* A_t\) либо \((1 + \epsilon)* A_t\). Оба эти выражения не зависят от \(\theta\), поэтому их производные равны нулю.
+
+Итак, благодаря суррогатной целевой функции с отсечением \textbf{мы ограничиваем возможное отклонение текущей политики от старой}. Когда отношение вероятностей выходит за заданный интервал, отсечение устраняет стимул к дальнейшему увеличению отклонения: градиент становится нулевым. При отношении \textgreater{} \(1 + \epsilon\) или \textless{} \(1 - \epsilon\) градиент соответствующей ограниченной части равен нулю.
+
+Окончательная функция потерь PPO в архитектуре Actor–Critic объединяет суррогатную целевую функцию с отсечением, функцию потерь оценки ценности и бонус за энтропию:
+
+\CourseFigure{ppo-objective.jpg}{Итоговая функция потерь Actor–Critic PPO: политика, ценность и энтропия \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/ppo-objective.jpg}{[оригинал]}}
+
+Материал непростой. Уделите время разбору этих ситуаций по таблице и графику. \textbf{Важно понять, почему именно такая конструкция имеет смысл.} Для более глубокого изучения полезна работа \href{https://fse.studenttheses.ub.rug.nl/25709/1/mAI_2021_BickD.pdf}{Даниэля Бика «Towards Delivering a Coherent Self-Contained Explanation of Proximal Policy Optimization», особенно раздел 3.4}.
+
+\section{Практическая часть}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit8/unit8_part1.ipynb}{Исходный ноутбук Google Colab}
+
+Теперь, когда мы изучили теорию PPO, лучший способ разобраться в алгоритме --- \textbf{реализовать его с нуля}.
+
+Реализация архитектуры с нуля --- лучший способ понять её устройство и полезная привычка. Мы уже делали это для метода на основе ценности (Q-Learning) и метода на основе политики (REINFORCE).
+
+Для реализации PPO мы воспользуемся двумя источниками:
+
+\begin{itemize}
+\tightlist
+\item
+  Руководство \href{https://github.com/vwxyzjn}{Косты Хуанга (Costa Huang)}. Коста --- автор \href{https://github.com/vwxyzjn/cleanrl}{CleanRL}, библиотеки глубокого обучения с подкреплением с качественными реализациями алгоритмов в отдельных файлах и возможностями, удобными для научных исследований.
+\item
+  Помимо руководства, для углублённого изучения прочитайте материал о 13 основных особенностях реализации: \url{https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}.
+\end{itemize}
+
+Чтобы проверить устойчивость агента, мы обучим его в следующей среде:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://www.gymlibrary.ml/environments/box2d/lunar_lander/}{LunarLander-v2}
+\end{itemize}
+
+\href{https://github.com/huggingface/deep-rl-class/blob/main/assets/63_deep_rl_intro/lunarlander.mp4}{Посмотреть оригинальное видео из курса}
+
+В конце мы опубликуем обученную модель на Hub, оценим её и посмотрим, как играет агент.
+
+LunarLander-v2 --- первая среда, с которой вы работали в начале курса. Тогда вы ещё не знали, как устроен алгоритм, а теперь сможете самостоятельно его реализовать и обучить. \textbf{Разве это не здорово!}
+
+\CourseFigure{giphy_anim.png}{Кадр анимации из исходного курса \protect\href{https://media.giphy.com/media/pynZagVcYxVUk/giphy.gif}{[оригинальная анимация]}}
+
+Приступим!
+
+Ноутбук Google Colab:
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit8/unit8_part1.ipynb}{Открыть исходный ноутбук в Colab}
+
+\subsection{Модуль 8: PPO на PyTorch}\label{unit-8-proximal-policy-gradient-ppo-with-pytorch}
+
+\CourseFigure{thumbnail.png}{Обложка модуля 8 курса Hugging Face Deep RL: алгоритм PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/thumbnail.png}{[оригинал]}}
+
+В этом ноутбуке вы научитесь \textbf{самостоятельно реализовывать PPO-агента на PyTorch, используя реализацию CleanRL в качестве образца}.
+
+Чтобы проверить его устойчивость, мы обучим агента в следующей среде:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://www.gymlibrary.dev/environments/box2d/lunar_lander/}{LunarLander-v2}
+\end{itemize}
+
+Мы постоянно совершенствуем наши учебные материалы. Поэтому, \textbf{если вы заметите проблемы в этом ноутбуке}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создайте обращение в репозитории GitHub}.
+
+\subsection{Цели практического ноутбука}\label{objectives-of-this-notebook}
+
+После выполнения ноутбука вы сможете:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Самостоятельно реализовать PPO-агента на PyTorch}.
+\item
+  \textbf{Опубликовать обученного агента и исходный код на Hugging Face Hub}, добавив видеозапись его поведения и результат оценки.
+\end{itemize}
+
+\subsection{Предварительные требования}\label{prerequisites}
+
+Перед началом работы с ноутбуком необходимо:
+
+{[} {]} Изучить \href{https://huggingface.co/deep-rl-course/unit8/introduction}{алгоритм PPO в теоретической части модуля 8}.
+
+Для зачёта этого практического задания в рамках \href{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}{сертификации} нужно загрузить одну модель. Минимального результата не требуется, однако мы \textbf{рекомендуем пробовать разные наборы гиперпараметров, чтобы улучшить качество обучения}.
+
+Если вы не видите свою модель, \textbf{прокрутите страницу до конца и нажмите кнопку обновления}.
+
+Подробнее о сертификации читайте в соответствующем разделе: \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}.
+
+\subsection{Настройка GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Чтобы \textbf{ускорить обучение агента, будем использовать GPU}. В Google Colab откройте меню \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Меню Google Colab для выбора среды выполнения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Выбор GPU-ускорителя в Google Colab \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+\subsection{Создание виртуального экрана}\label{create-a-virtual-display}
+
+Во время работы с ноутбуком нам потребуется записать видео с поведением агента. Для этого в Colab \textbf{нужен виртуальный экран, на котором будет отображаться среда} и с которого можно будет получать кадры.
+
+Следующая ячейка устанавливает библиотеки, создаёт виртуальный экран и запускает его.
+
+\begin{lstlisting}
+apt install python-opengl
+apt install ffmpeg
+apt install xvfb
+pip install pyglet==1.5
+pip install pyvirtualdisplay
+\end{lstlisting}
+
+\begin{lstlisting}
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsection{Установка зависимостей}\label{install-dependencies}
+
+В этом упражнении используется \texttt{gym==0.21}, поскольку видеоролик был записан с библиотекой Gym.
+
+\begin{lstlisting}
+pip install gym==0.22
+pip install imageio-ffmpeg
+pip install huggingface_hub
+pip install gym[box2d]==0.22
+\end{lstlisting}
+
+\subsection{Реализуем PPO с нуля по руководству Косты Хуанга}\label{lets-code-ppo-from-scratch-with-costa-huangs-tutorial}
+
+\begin{itemize}
+\tightlist
+\item
+  Для основной реализации PPO мы воспользуемся отличным \href{https://costa.sh/}{руководством Косты Хуанга (Costa Huang)}.
+\item
+  Чтобы глубже разобраться в деталях, дополнительно можно изучить 37 основных особенностей реализации: \url{https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}.
+\end{itemize}
+
+Видеоурок: \url{https://youtu.be/MEt6rrxH8W4}.
+
+\begin{lstlisting}
+from IPython.display import HTML
+
+HTML(
+    '<iframe width="560" height="315" src="https://www.youtube.com/embed/MEt6rrxH8W4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'
+)
+\end{lstlisting}
+
+\subsection{Добавление интеграции с Hugging Face}\label{add-the-hugging-face-integration}
+
+\begin{itemize}
+\item
+  Чтобы загрузить нашу модель на Hub, сначала определим функцию \texttt{package\_to\_hub}.
+\item
+  Добавим зависимости, необходимые для публикации модели на Hub.
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import HfApi, upload_folder
+from huggingface_hub.repocard import metadata_eval_result, metadata_save
+
+from pathlib import Path
+import datetime
+import tempfile
+import json
+import shutil
+import imageio
+
+from wasabi import Printer
+
+msg = Printer()
+\end{lstlisting}
+
+\begin{itemize}
+\tightlist
+\item
+  Добавим новый аргумент в функцию \texttt{parse\_args()}, чтобы задать идентификатор репозитория (repo ID), в который будет опубликована модель.
+\end{itemize}
+
+\begin{lstlisting}
+# Adding HuggingFace argument
+parser.add_argument(
+    "--repo-id",
+    type=str,
+    default="ThomasSimonini/ppo-CartPole-v1",
+    help="id of the model repository from the Hugging Face Hub {username/repo_name}",
+)
+\end{lstlisting}
+
+\begin{itemize}
+\item
+  Затем добавим методы, необходимые для публикации модели на Hub.
+\item
+  Эти методы выполняют следующие задачи:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \texttt{\_evalutate\_agent()}: оценивает качество агента.
+  \item
+    \texttt{\_generate\_model\_card()}: создаёт карточку модели агента.
+  \item
+    \texttt{\_record\_video()}: записывает видео с поведением агента.
+  \end{itemize}
+\end{itemize}
+
+\begin{lstlisting}
+def package_to_hub(
+    repo_id,
+    model,
+    hyperparameters,
+    eval_env,
+    video_fps=30,
+    commit_message="Push agent to the Hub",
+    token=None,
+    logs=None,
+):
+    """
+    Evaluate, Generate a video and Upload a model to Hugging Face Hub.
+    This method does the complete pipeline:
+    - It evaluates the model
+    - It generates the model card
+    - It generates a replay video of the agent
+    - It pushes everything to the hub
+    :param repo_id: id of the model repository from the Hugging Face Hub
+    :param model: trained model
+    :param eval_env: environment used to evaluate the agent
+    :param fps: number of fps for rendering the video
+    :param commit_message: commit message
+    :param logs: directory on local machine of tensorboard logs you'd like to upload
+    """
+    msg.info(
+        "This function will save, evaluate, generate a video of your agent, "
+        "create a model card and push everything to the hub. "
+        "It might take up to 1min. \n "
+        "This is a work in progress: if you encounter a bug, please open an issue."
+    )
+    # Step 1: Clone or create the repo
+    repo_url = HfApi().create_repo(
+        repo_id=repo_id,
+        token=token,
+        private=False,
+        exist_ok=True,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdirname = Path(tmpdirname)
+
+        # Step 2: Save the model
+        torch.save(model.state_dict(), tmpdirname / "model.pt")
+
+        # Step 3: Evaluate the model and build JSON
+        mean_reward, std_reward = _evaluate_agent(eval_env, 10, model)
+
+        # First get datetime
+        eval_datetime = datetime.datetime.now()
+        eval_form_datetime = eval_datetime.isoformat()
+
+        evaluate_data = {
+            "env_id": hyperparameters.env_id,
+            "mean_reward": mean_reward,
+            "std_reward": std_reward,
+            "n_evaluation_episodes": 10,
+            "eval_datetime": eval_form_datetime,
+        }
+
+        # Write a JSON file
+        with open(tmpdirname / "results.json", "w") as outfile:
+            json.dump(evaluate_data, outfile)
+
+        # Step 4: Generate a video
+        video_path = tmpdirname / "replay.mp4"
+        record_video(eval_env, model, video_path, video_fps)
+
+        # Step 5: Generate the model card
+        generated_model_card, metadata = _generate_model_card(
+            "PPO", hyperparameters.env_id, mean_reward, std_reward, hyperparameters
+        )
+        _save_model_card(tmpdirname, generated_model_card, metadata)
+
+        # Step 6: Add logs if needed
+        if logs:
+            _add_logdir(tmpdirname, Path(logs))
+
+        msg.info(f"Pushing repo {repo_id} to the Hugging Face Hub")
+
+        repo_url = upload_folder(
+            repo_id=repo_id,
+            folder_path=tmpdirname,
+            path_in_repo="",
+            commit_message=commit_message,
+            token=token,
+        )
+
+        msg.info(f"Your model is pushed to the Hub. You can view your model here: {repo_url}")
+    return repo_url
+
+
+def _evaluate_agent(env, n_eval_episodes, policy):
+    """
+    Evaluate the agent for ``n_eval_episodes`` episodes and returns average reward and std of reward.
+    :param env: The evaluation environment
+    :param n_eval_episodes: Number of episode to evaluate the agent
+    :param policy: The agent
+    """
+    episode_rewards = []
+    for episode in range(n_eval_episodes):
+        state = env.reset()
+        step = 0
+        done = False
+        total_rewards_ep = 0
+
+        while done is False:
+            state = torch.Tensor(state).to(device)
+            action, _, _, _ = policy.get_action_and_value(state)
+            new_state, reward, done, info = env.step(action.cpu().numpy())
+            total_rewards_ep += reward
+            if done:
+                break
+            state = new_state
+        episode_rewards.append(total_rewards_ep)
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+
+    return mean_reward, std_reward
+
+
+def record_video(env, policy, out_directory, fps=30):
+    images = []
+    done = False
+    state = env.reset()
+    img = env.render(mode="rgb_array")
+    images.append(img)
+    while not done:
+        state = torch.Tensor(state).to(device)
+        # Take the action (index) that have the maximum expected future reward given that state
+        action, _, _, _ = policy.get_action_and_value(state)
+        state, reward, done, info = env.step(
+            action.cpu().numpy()
+        )  # We directly put next_state = state for recording logic
+        img = env.render(mode="rgb_array")
+        images.append(img)
+    imageio.mimsave(out_directory, [np.array(img) for i, img in enumerate(images)], fps=fps)
+
+
+def _generate_model_card(model_name, env_id, mean_reward, std_reward, hyperparameters):
+    """
+    Generate the model card for the Hub
+    :param model_name: name of the model
+    :env_id: name of the environment
+    :mean_reward: mean reward of the agent
+    :std_reward: standard deviation of the mean reward of the agent
+    :hyperparameters: training arguments
+    """
+    # Step 1: Select the tags
+    metadata = generate_metadata(model_name, env_id, mean_reward, std_reward)
+
+    # Transform the hyperparams namespace to string
+    converted_dict = vars(hyperparameters)
+    converted_str = str(converted_dict)
+    converted_str = converted_str.split(", ")
+    converted_str = "\n".join(converted_str)
+
+    # Step 2: Generate the model card
+    model_card = f"""
+  # PPO Agent Playing {env_id}
+
+  This is a trained model of a PPO agent playing {env_id}.
+
+  # Hyperparameters
+  """
+    return model_card, metadata
+
+
+def generate_metadata(model_name, env_id, mean_reward, std_reward):
+    """
+    Define the tags for the model card
+    :param model_name: name of the model
+    :param env_id: name of the environment
+    :mean_reward: mean reward of the agent
+    :std_reward: standard deviation of the mean reward of the agent
+    """
+    metadata = {}
+    metadata["tags"] = [
+        env_id,
+        "ppo",
+        "deep-reinforcement-learning",
+        "reinforcement-learning",
+        "custom-implementation",
+        "deep-rl-course",
+    ]
+
+    # Add metrics
+    eval = metadata_eval_result(
+        model_pretty_name=model_name,
+        task_pretty_name="reinforcement-learning",
+        task_id="reinforcement-learning",
+        metrics_pretty_name="mean_reward",
+        metrics_id="mean_reward",
+        metrics_value=f"{mean_reward:.2f} +/- {std_reward:.2f}",
+        dataset_pretty_name=env_id,
+        dataset_id=env_id,
+    )
+
+    # Merges both dictionaries
+    metadata = {**metadata, **eval}
+
+    return metadata
+
+
+def _save_model_card(local_path, generated_model_card, metadata):
+    """Saves a model card for the repository.
+    :param local_path: repository directory
+    :param generated_model_card: model card generated by _generate_model_card()
+    :param metadata: metadata
+    """
+    readme_path = local_path / "README.md"
+    readme = ""
+    if readme_path.exists():
+        with readme_path.open("r", encoding="utf8") as f:
+            readme = f.read()
+    else:
+        readme = generated_model_card
+
+    with readme_path.open("w", encoding="utf-8") as f:
+        f.write(readme)
+
+    # Save our metrics to Readme metadata
+    metadata_save(readme_path, metadata)
+
+
+def _add_logdir(local_path: Path, logdir: Path):
+    """Adds a logdir to the repository.
+    :param local_path: repository directory
+    :param logdir: logdir directory
+    """
+    if logdir.exists() and logdir.is_dir():
+        # Add the logdir to the repository under new dir called logs
+        repo_logdir = local_path / "logs"
+
+        # Delete current logs if they exist
+        if repo_logdir.exists():
+            shutil.rmtree(repo_logdir)
+
+        # Copy logdir into repo logdir
+        shutil.copytree(logdir, repo_logdir)
+\end{lstlisting}
+
+\begin{itemize}
+\tightlist
+\item
+  Наконец, вызовем эту функцию в конце обучения PPO.
+\end{itemize}
+
+\begin{lstlisting}
+# Create the evaluation environment
+eval_env = gym.make(args.env_id)
+
+package_to_hub(
+    repo_id=args.repo_id,
+    model=agent,  # The model we want to save
+    hyperparameters=args,
+    eval_env=gym.make(args.env_id),
+    logs=f"runs/{run_name}",
+)
+\end{lstlisting}
+
+\begin{itemize}
+\tightlist
+\item
+  Вот как выглядит окончательный файл \texttt{ppo.py}:
+\end{itemize}
+
+\begin{lstlisting}
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppopy
+
+import argparse
+import os
+import random
+import time
+from distutils.util import strtobool
+
+import gym
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions.categorical import Categorical
+from torch.utils.tensorboard import SummaryWriter
+
+from huggingface_hub import HfApi, upload_folder
+from huggingface_hub.repocard import metadata_eval_result, metadata_save
+
+from pathlib import Path
+import datetime
+import tempfile
+import json
+import shutil
+import imageio
+
+from wasabi import Printer
+
+msg = Printer()
+
+
+def parse_args():
+    # fmt: off
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exp-name", type=str, default=os.path.basename(__file__).rstrip(".py"),
+        help="the name of this experiment")
+    parser.add_argument("--seed", type=int, default=1,
+        help="seed of the experiment")
+    parser.add_argument("--torch-deterministic", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="if toggled, `torch.backends.cudnn.deterministic=False`")
+    parser.add_argument("--cuda", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="if toggled, cuda will be enabled by default")
+    parser.add_argument("--track", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="if toggled, this experiment will be tracked with Weights and Biases")
+    parser.add_argument("--wandb-project-name", type=str, default="cleanRL",
+        help="the wandb's project name")
+    parser.add_argument("--wandb-entity", type=str, default=None,
+        help="the entity (team) of wandb's project")
+    parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="weather to capture videos of the agent performances (check out `videos` folder)")
+
+    # Algorithm specific arguments
+    parser.add_argument("--env-id", type=str, default="CartPole-v1",
+        help="the id of the environment")
+    parser.add_argument("--total-timesteps", type=int, default=50000,
+        help="total timesteps of the experiments")
+    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+        help="the learning rate of the optimizer")
+    parser.add_argument("--num-envs", type=int, default=4,
+        help="the number of parallel game environments")
+    parser.add_argument("--num-steps", type=int, default=128,
+        help="the number of steps to run in each environment per policy rollout")
+    parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="Toggle learning rate annealing for policy and value networks")
+    parser.add_argument("--gae", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="Use GAE for advantage computation")
+    parser.add_argument("--gamma", type=float, default=0.99,
+        help="the discount factor gamma")
+    parser.add_argument("--gae-lambda", type=float, default=0.95,
+        help="the lambda for the general advantage estimation")
+    parser.add_argument("--num-minibatches", type=int, default=4,
+        help="the number of mini-batches")
+    parser.add_argument("--update-epochs", type=int, default=4,
+        help="the K epochs to update the policy")
+    parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="Toggles advantages normalization")
+    parser.add_argument("--clip-coef", type=float, default=0.2,
+        help="the surrogate clipping coefficient")
+    parser.add_argument("--clip-vloss", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="Toggles whether or not to use a clipped loss for the value function, as per the paper.")
+    parser.add_argument("--ent-coef", type=float, default=0.01,
+        help="coefficient of the entropy")
+    parser.add_argument("--vf-coef", type=float, default=0.5,
+        help="coefficient of the value function")
+    parser.add_argument("--max-grad-norm", type=float, default=0.5,
+        help="the maximum norm for the gradient clipping")
+    parser.add_argument("--target-kl", type=float, default=None,
+        help="the target KL divergence threshold")
+
+    # Adding HuggingFace argument
+    parser.add_argument("--repo-id", type=str, default="ThomasSimonini/ppo-CartPole-v1", help="id of the model repository from the Hugging Face Hub {username/repo_name}")
+
+    args = parser.parse_args()
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    # fmt: on
+    return args
+
+
+def package_to_hub(
+    repo_id,
+    model,
+    hyperparameters,
+    eval_env,
+    video_fps=30,
+    commit_message="Push agent to the Hub",
+    token=None,
+    logs=None,
+):
+    """
+    Evaluate, Generate a video and Upload a model to Hugging Face Hub.
+    This method does the complete pipeline:
+    - It evaluates the model
+    - It generates the model card
+    - It generates a replay video of the agent
+    - It pushes everything to the hub
+    :param repo_id: id of the model repository from the Hugging Face Hub
+    :param model: trained model
+    :param eval_env: environment used to evaluate the agent
+    :param fps: number of fps for rendering the video
+    :param commit_message: commit message
+    :param logs: directory on local machine of tensorboard logs you'd like to upload
+    """
+    msg.info(
+        "This function will save, evaluate, generate a video of your agent, "
+        "create a model card and push everything to the hub. "
+        "It might take up to 1min. \n "
+        "This is a work in progress: if you encounter a bug, please open an issue."
+    )
+    # Step 1: Clone or create the repo
+    repo_url = HfApi().create_repo(
+        repo_id=repo_id,
+        token=token,
+        private=False,
+        exist_ok=True,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        tmpdirname = Path(tmpdirname)
+
+        # Step 2: Save the model
+        torch.save(model.state_dict(), tmpdirname / "model.pt")
+
+        # Step 3: Evaluate the model and build JSON
+        mean_reward, std_reward = _evaluate_agent(eval_env, 10, model)
+
+        # First get datetime
+        eval_datetime = datetime.datetime.now()
+        eval_form_datetime = eval_datetime.isoformat()
+
+        evaluate_data = {
+            "env_id": hyperparameters.env_id,
+            "mean_reward": mean_reward,
+            "std_reward": std_reward,
+            "n_evaluation_episodes": 10,
+            "eval_datetime": eval_form_datetime,
+        }
+
+        # Write a JSON file
+        with open(tmpdirname / "results.json", "w") as outfile:
+            json.dump(evaluate_data, outfile)
+
+        # Step 4: Generate a video
+        video_path = tmpdirname / "replay.mp4"
+        record_video(eval_env, model, video_path, video_fps)
+
+        # Step 5: Generate the model card
+        generated_model_card, metadata = _generate_model_card(
+            "PPO", hyperparameters.env_id, mean_reward, std_reward, hyperparameters
+        )
+        _save_model_card(tmpdirname, generated_model_card, metadata)
+
+        # Step 6: Add logs if needed
+        if logs:
+            _add_logdir(tmpdirname, Path(logs))
+
+        msg.info(f"Pushing repo {repo_id} to the Hugging Face Hub")
+
+        repo_url = upload_folder(
+            repo_id=repo_id,
+            folder_path=tmpdirname,
+            path_in_repo="",
+            commit_message=commit_message,
+            token=token,
+        )
+
+        msg.info(f"Your model is pushed to the Hub. You can view your model here: {repo_url}")
+    return repo_url
+
+
+def _evaluate_agent(env, n_eval_episodes, policy):
+    """
+    Evaluate the agent for ``n_eval_episodes`` episodes and returns average reward and std of reward.
+    :param env: The evaluation environment
+    :param n_eval_episodes: Number of episode to evaluate the agent
+    :param policy: The agent
+    """
+    episode_rewards = []
+    for episode in range(n_eval_episodes):
+        state = env.reset()
+        step = 0
+        done = False
+        total_rewards_ep = 0
+
+        while done is False:
+            state = torch.Tensor(state).to(device)
+            action, _, _, _ = policy.get_action_and_value(state)
+            new_state, reward, done, info = env.step(action.cpu().numpy())
+            total_rewards_ep += reward
+            if done:
+                break
+            state = new_state
+        episode_rewards.append(total_rewards_ep)
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+
+    return mean_reward, std_reward
+
+
+def record_video(env, policy, out_directory, fps=30):
+    images = []
+    done = False
+    state = env.reset()
+    img = env.render(mode="rgb_array")
+    images.append(img)
+    while not done:
+        state = torch.Tensor(state).to(device)
+        # Take the action (index) that have the maximum expected future reward given that state
+        action, _, _, _ = policy.get_action_and_value(state)
+        state, reward, done, info = env.step(
+            action.cpu().numpy()
+        )  # We directly put next_state = state for recording logic
+        img = env.render(mode="rgb_array")
+        images.append(img)
+    imageio.mimsave(out_directory, [np.array(img) for i, img in enumerate(images)], fps=fps)
+
+
+def _generate_model_card(model_name, env_id, mean_reward, std_reward, hyperparameters):
+    """
+    Generate the model card for the Hub
+    :param model_name: name of the model
+    :env_id: name of the environment
+    :mean_reward: mean reward of the agent
+    :std_reward: standard deviation of the mean reward of the agent
+    :hyperparameters: training arguments
+    """
+    # Step 1: Select the tags
+    metadata = generate_metadata(model_name, env_id, mean_reward, std_reward)
+
+    # Transform the hyperparams namespace to string
+    converted_dict = vars(hyperparameters)
+    converted_str = str(converted_dict)
+    converted_str = converted_str.split(", ")
+    converted_str = "\n".join(converted_str)
+
+    # Step 2: Generate the model card
+    model_card = f"""
+  # PPO Agent Playing {env_id}
+
+  This is a trained model of a PPO agent playing {env_id}.
+
+  # Hyperparameters
+  """
+    return model_card, metadata
+
+
+def generate_metadata(model_name, env_id, mean_reward, std_reward):
+    """
+    Define the tags for the model card
+    :param model_name: name of the model
+    :param env_id: name of the environment
+    :mean_reward: mean reward of the agent
+    :std_reward: standard deviation of the mean reward of the agent
+    """
+    metadata = {}
+    metadata["tags"] = [
+        env_id,
+        "ppo",
+        "deep-reinforcement-learning",
+        "reinforcement-learning",
+        "custom-implementation",
+        "deep-rl-course",
+    ]
+
+    # Add metrics
+    eval = metadata_eval_result(
+        model_pretty_name=model_name,
+        task_pretty_name="reinforcement-learning",
+        task_id="reinforcement-learning",
+        metrics_pretty_name="mean_reward",
+        metrics_id="mean_reward",
+        metrics_value=f"{mean_reward:.2f} +/- {std_reward:.2f}",
+        dataset_pretty_name=env_id,
+        dataset_id=env_id,
+    )
+
+    # Merges both dictionaries
+    metadata = {**metadata, **eval}
+
+    return metadata
+
+
+def _save_model_card(local_path, generated_model_card, metadata):
+    """Saves a model card for the repository.
+    :param local_path: repository directory
+    :param generated_model_card: model card generated by _generate_model_card()
+    :param metadata: metadata
+    """
+    readme_path = local_path / "README.md"
+    readme = ""
+    if readme_path.exists():
+        with readme_path.open("r", encoding="utf8") as f:
+            readme = f.read()
+    else:
+        readme = generated_model_card
+
+    with readme_path.open("w", encoding="utf-8") as f:
+        f.write(readme)
+
+    # Save our metrics to Readme metadata
+    metadata_save(readme_path, metadata)
+
+
+def _add_logdir(local_path: Path, logdir: Path):
+    """Adds a logdir to the repository.
+    :param local_path: repository directory
+    :param logdir: logdir directory
+    """
+    if logdir.exists() and logdir.is_dir():
+        # Add the logdir to the repository under new dir called logs
+        repo_logdir = local_path / "logs"
+
+        # Delete current logs if they exist
+        if repo_logdir.exists():
+            shutil.rmtree(repo_logdir)
+
+        # Copy logdir into repo logdir
+        shutil.copytree(logdir, repo_logdir)
+
+
+def make_env(env_id, seed, idx, capture_video, run_name):
+    def thunk():
+        env = gym.make(env_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        env.seed(seed)
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
+
+    return thunk
+
+
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
+
+
+class Agent(nn.Module):
+    def __init__(self, envs):
+        super().__init__()
+        self.critic = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 1), std=1.0),
+        )
+        self.actor = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+        )
+
+    def get_value(self, x):
+        return self.critic(x)
+
+    def get_action_and_value(self, x, action=None):
+        logits = self.actor(x)
+        probs = Categorical(logits=logits)
+        if action is None:
+            action = probs.sample()
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
+    writer = SummaryWriter(f"runs/{run_name}")
+    writer.add_text(
+        "hyperparameters",
+        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    )
+
+    # TRY NOT TO MODIFY: seeding
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+
+    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    # env setup
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+    )
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+
+    agent = Agent(envs).to(device)
+    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
+
+    # ALGO Logic: Storage setup
+    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
+    values = torch.zeros((args.num_steps, args.num_envs)).to(device)
+
+    # TRY NOT TO MODIFY: start the game
+    global_step = 0
+    start_time = time.time()
+    next_obs = torch.Tensor(envs.reset()).to(device)
+    next_done = torch.zeros(args.num_envs).to(device)
+    num_updates = args.total_timesteps // args.batch_size
+
+    for update in range(1, num_updates + 1):
+        # Annealing the rate if instructed to do so.
+        if args.anneal_lr:
+            frac = 1.0 - (update - 1.0) / num_updates
+            lrnow = frac * args.learning_rate
+            optimizer.param_groups[0]["lr"] = lrnow
+
+        for step in range(0, args.num_steps):
+            global_step += 1 * args.num_envs
+            obs[step] = next_obs
+            dones[step] = next_done
+
+            # ALGO LOGIC: action logic
+            with torch.no_grad():
+                action, logprob, _, value = agent.get_action_and_value(next_obs)
+                values[step] = value.flatten()
+            actions[step] = action
+            logprobs[step] = logprob
+
+            # TRY NOT TO MODIFY: execute the game and log data.
+            next_obs, reward, done, info = envs.step(action.cpu().numpy())
+            rewards[step] = torch.tensor(reward).to(device).view(-1)
+            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
+
+            for item in info:
+                if "episode" in item.keys():
+                    print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
+                    writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
+                    writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
+                    break
+
+        # bootstrap value if not done
+        with torch.no_grad():
+            next_value = agent.get_value(next_obs).reshape(1, -1)
+            if args.gae:
+                advantages = torch.zeros_like(rewards).to(device)
+                lastgaelam = 0
+                for t in reversed(range(args.num_steps)):
+                    if t == args.num_steps - 1:
+                        nextnonterminal = 1.0 - next_done
+                        nextvalues = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        nextvalues = values[t + 1]
+                    delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
+                    advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                returns = advantages + values
+            else:
+                returns = torch.zeros_like(rewards).to(device)
+                for t in reversed(range(args.num_steps)):
+                    if t == args.num_steps - 1:
+                        nextnonterminal = 1.0 - next_done
+                        next_return = next_value
+                    else:
+                        nextnonterminal = 1.0 - dones[t + 1]
+                        next_return = returns[t + 1]
+                    returns[t] = rewards[t] + args.gamma * nextnonterminal * next_return
+                advantages = returns - values
+
+        # flatten the batch
+        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_logprobs = logprobs.reshape(-1)
+        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_advantages = advantages.reshape(-1)
+        b_returns = returns.reshape(-1)
+        b_values = values.reshape(-1)
+
+        # Optimizing the policy and value network
+        b_inds = np.arange(args.batch_size)
+        clipfracs = []
+        for epoch in range(args.update_epochs):
+            np.random.shuffle(b_inds)
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
+                mb_inds = b_inds[start:end]
+
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(
+                    b_obs[mb_inds], b_actions.long()[mb_inds]
+                )
+                logratio = newlogprob - b_logprobs[mb_inds]
+                ratio = logratio.exp()
+
+                with torch.no_grad():
+                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
+                    old_approx_kl = (-logratio).mean()
+                    approx_kl = ((ratio - 1) - logratio).mean()
+                    clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
+
+                mb_advantages = b_advantages[mb_inds]
+                if args.norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+
+                # Policy loss
+                pg_loss1 = -mb_advantages * ratio
+                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+                # Value loss
+                newvalue = newvalue.view(-1)
+                if args.clip_vloss:
+                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+                    v_clipped = b_values[mb_inds] + torch.clamp(
+                        newvalue - b_values[mb_inds],
+                        -args.clip_coef,
+                        args.clip_coef,
+                    )
+                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
+                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+                    v_loss = 0.5 * v_loss_max.mean()
+                else:
+                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+
+                entropy_loss = entropy.mean()
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                optimizer.step()
+
+            if args.target_kl is not None:
+                if approx_kl > args.target_kl:
+                    break
+
+        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+        var_y = np.var(y_true)
+        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
+        # TRY NOT TO MODIFY: record rewards for plotting purposes
+        writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
+        writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+        writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+        writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
+        writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+        writer.add_scalar("losses/explained_variance", explained_var, global_step)
+        print("SPS:", int(global_step / (time.time() - start_time)))
+        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+    envs.close()
+    writer.close()
+
+    # Create the evaluation environment
+    eval_env = gym.make(args.env_id)
+
+    package_to_hub(
+        repo_id=args.repo_id,
+        model=agent,  # The model we want to save
+        hyperparameters=args,
+        eval_env=gym.make(args.env_id),
+        logs=f"runs/{run_name}",
+    )
+\end{lstlisting}
+
+Чтобы поделиться своей моделью с сообществом, нужно выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если у вас ещё нет аккаунта Hugging Face, создайте его: \url{https://huggingface.co/join}.
+\item
+  Войдите в аккаунт и получите токен аутентификации на сайте Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Создайте новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правами записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена Hugging Face с правом записи \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Скопируйте токен.
+\item
+  Выполните следующую ячейку и вставьте токен.
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login
+notebook_login()
+!git config --global credential.helper store
+\end{lstlisting}
+
+Если вы не используете Google Colab или Jupyter Notebook, вместо этого выполните команду \texttt{huggingface-cli\ login}.
+
+\subsection{Запуск обучения}\label{lets-start-the-training}
+
+Внимание! Внимание! Внимание! \textbf{Не используйте тот же идентификатор репозитория, который применяли в модуле 1}.
+
+\begin{itemize}
+\item
+  Теперь, когда PPO реализован с нуля и добавлена интеграция с Hugging Face, можно приступить к обучению.
+\item
+  Сначала скопируйте весь код в созданный вами файл \texttt{ppo.py}.
+\end{itemize}
+
+\CourseFigure{step1.png}{Создание Python-файла с реализацией PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/step1.png}{[оригинал]}}
+
+\CourseFigure{step2.png}{Подготовка и сохранение скрипта PPO \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/step2.png}{[оригинал]}}
+
+\begin{itemize}
+\item
+  Запустите этот скрипт с дополнительными параметрами, заданными через \texttt{argparse}. Команда запуска: \texttt{python\ \textless{}name-of-python-script\textgreater{}.py}.
+\item
+  Рекомендуется изменить и другие гиперпараметры, иначе обучение может оказаться недостаточно устойчивым.
+\end{itemize}
+
+\begin{lstlisting}
+!python ppo.py --env-id="LunarLander-v2" --repo-id="YOUR_REPO_ID" --total-timesteps=50000
+\end{lstlisting}
+
+\subsection{Дополнительные задания}\label{some-additional-challenges}
+
+Лучший способ учиться --- \textbf{самостоятельно экспериментировать}! Почему бы не попробовать другую среду? Или не модифицировать реализацию для совместимости с Gymnasium?
+
+Увидимся во второй части модуля 8, где мы будем обучать агентов играть в Doom!
+
+\subsection{Продолжайте учиться и совершенствоваться}\label{keep-learning-stay-awesome}
+
+\section{Заключение}\label{conclusion}
+
+На сегодня всё. Поздравляем с завершением этой части модуля и руководства!
+
+Лучший способ освоить материал --- практиковаться и экспериментировать. \textbf{Например, почему бы не улучшить реализацию, чтобы она принимала на вход кадры изображений?}
+
+Увидимся во второй части модуля!
+
+\subsection{Продолжайте учиться и совершенствоваться}\label{keep-learning-stay-awesome-1}
+
+\section{Дополнительная литература}\label{additional-readings}
+
+Это \textbf{необязательные материалы} для тех, кто хочет изучить тему глубже.
+
+\subsection{Объяснения алгоритма PPO}\label{ppo-explained}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://fse.studenttheses.ub.rug.nl/25709/1/mAI_2021_BickD.pdf}{Даниэль Бик: последовательное самостоятельное объяснение Proximal Policy Optimization}
+\item
+  \href{https://stackoverflow.com/questions/46422845/what-is-the-way-to-understand-proximal-policy-optimization-algorithm-in-rl}{Как лучше понять алгоритм Proximal Policy Optimization в RL?}
+\item
+  \href{https://youtu.be/KjWF8VIMGiY}{Основы глубокого RL: лекция 4 об алгоритмах TRPO и PPO, Питер Аббел}
+\item
+  \href{https://openai.com/blog/openai-baselines-ppo/}{Статья OpenAI об алгоритме PPO}
+\item
+  \href{https://spinningup.openai.com/en/latest/algorithms/ppo.html}{Материал Spinning Up RL об алгоритме PPO}
+\item
+  \href{https://arxiv.org/abs/1707.06347}{Научная статья «Proximal Policy Optimization Algorithms»}
+\end{itemize}
+
+\subsection{Особенности реализации PPO}\label{ppo-implementation-details}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}{37 важных деталей реализации Proximal Policy Optimization}
+\item
+  \href{https://www.youtube.com/watch?v=MEt6rrxH8W4}{Часть 1 из 3: реализация PPO и 11 основных деталей реализации}
+\end{itemize}
+
+\subsection{Выборка по значимости (importance sampling)}\label{importance-sampling}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://youtu.be/C3p2wI4RAi8}{Объяснение выборки по значимости (importance sampling)}
+\end{itemize}
+
+\section{Введение в PPO с использованием Sample Factory}\label{introduction-to-ppo-with-sample-factory}
+
+\CourseFigure{thumbnail2.png}{Модуль 8, часть 2: PPO с Sample Factory и ViZDoom \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/thumbnail2.png}{[оригинал]}}
+
+Во второй части модуля 8 мы глубже изучим оптимизацию PPO. С помощью \href{https://samplefactory.dev/}{Sample-Factory}, \textbf{асинхронной реализации алгоритма PPO}, мы обучим агента играть в \href{https://vizdoom.cs.put.edu.pl/}{ViZDoom} --- открытую реализацию Doom.
+
+В ноутбуке вы \textbf{обучите агента проходить уровень Health Gathering}, собирая аптечки, чтобы не погибнуть. После этого сможете \textbf{попробовать обучить агента в более сложных сценариях, например Deathmatch}.
+
+\CourseFigure{environments.png}{Игровые среды ViZDoom, используемые для обучения агентов \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/environments.png}{[оригинал]}}
+
+Звучит интересно? Тогда начнём!
+
+Практическое задание подготовил \href{https://twitter.com/edwardbeeching}{Эдвард Бичинг (Edward Beeching)}, исследователь машинного обучения в Hugging Face. Он также работал над Godot Reinforcement Learning Agents --- открытым интерфейсом для разработки сред и агентов в игровом движке Godot.
+
+\section{Практика: продвинутое глубокое RL — игра в Doom по пикселям с Sample Factory}\label{hands-on-advanced-deep-reinforcement-learning.-using-sample-factory-to-play-doom-from-pixels}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit8/unit8_part2.ipynb}{Исходный ноутбук Google Colab}
+
+Ноутбук Colab: \href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit8/unit8_part2.ipynb}{открыть исходный ноутбук в Colab}.
+
+\subsection{Модуль 8, часть 2: игра в Doom по пикселям с Sample Factory}\label{unit-8-part-2-advanced-deep-reinforcement-learning.-using-sample-factory-to-play-doom-from-pixels}
+
+\CourseFigure{thumbnail2.png}{Модуль 8, часть 2: PPO с Sample Factory и ViZDoom \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/thumbnail2.png}{[оригинал]}}
+
+В этом ноутбуке мы научимся обучать глубокую нейронную сеть собирать предметы в трёхмерной среде на основе игры Doom. Ниже в оригинальном курсе приведено видео поведения полученной политики. Для обучения используется \href{https://www.samplefactory.dev/}{Sample Factory} --- асинхронная реализация алгоритма PPO.
+
+Обратите внимание на следующие моменты:
+
+\begin{itemize}
+\item
+  \href{https://www.samplefactory.dev/}{Sample Factory} --- продвинутый фреймворк RL, который \textbf{работает только в Linux и macOS}, но не в Windows (согласно данному учебному материалу).
+\item
+  Максимальная производительность достигается \textbf{на машине с GPU и большим числом ядер CPU}: до 100 тысяч взаимодействий со средой в секунду. Ресурсы стандартного ноутбука Colab \textbf{ограничивают производительность этой библиотеки}, поэтому скорость, полученная здесь, \textbf{не отражает её реальных возможностей}.
+\item
+  Результаты измерения производительности Sample Factory в разных сценариях приведены в разделе \href{https://github.com/alex-petrenko/sample-factory/tree/master/sf_examples}{примеров}.
+\end{itemize}
+
+\begin{lstlisting}
+from IPython.display import HTML
+
+HTML(
+    """<video width="640" height="480" controls>
+  <source src="https://huggingface.co/edbeeching/doom_health_gathering_supreme_3333/resolve/main/replay.mp4"
+  type="video/mp4">Your browser does not support the video tag.</video>"""
+)
+\end{lstlisting}
+
+Для зачёта практической части в рамках \href{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}{сертификации} необходимо опубликовать одну модель:
+
+\begin{itemize}
+\tightlist
+\item
+  Для среды \texttt{doom\_health\_gathering\_supreme} требуется результат не ниже \textgreater= 5.
+\end{itemize}
+
+Для просмотра результата найдите свою модель в \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров}. \textbf{Результат вычисляется как среднее вознаграждение минус стандартное отклонение вознаграждения} (mean\_reward - std).
+
+Если вы не видите модель, \textbf{прокрутите страницу до конца и нажмите кнопку обновления}.
+
+Подробнее о сертификации читайте в разделе \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}.
+
+\subsection{Настройка GPU}\label{set-the-gpu-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Чтобы \textbf{ускорить обучение агента, мы используем GPU}. В Colab откройте \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Меню Google Colab для выбора среды выполнения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Выбор GPU-ускорителя в Google Colab \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+Перед обучением агента \textbf{изучим библиотеку и среды, которые будем использовать}.
+
+\subsection{Sample Factory}\label{sample-factory}
+
+\href{https://www.samplefactory.dev/}{Sample Factory} --- одна из \textbf{самых быстрых библиотек RL, ориентированная на высокоэффективные синхронные и асинхронные реализации методов градиента политики (PPO)}.
+
+Sample Factory тщательно \textbf{протестирована, используется многими исследователями и практиками} и активно поддерживается. Наша реализация \textbf{достигает результатов уровня SOTA в различных задачах, сокращая время обучения RL-экспериментов и требования к оборудованию}.
+
+\CourseFigure{samplefactoryenvs.png}{Среды, поддерживаемые Sample Factory \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/samplefactoryenvs.png}{[оригинал]}}
+
+\subsubsection{Ключевые возможности}\label{key-features}
+
+\begin{itemize}
+\tightlist
+\item
+  Высокооптимизированная \href{https://www.samplefactory.dev/06-architecture/overview/}{архитектура алгоритма} для максимальной скорости сбора обучающих данных.
+\item
+  \href{https://www.samplefactory.dev/07-advanced-topics/sync-async/}{Синхронный и асинхронный} режимы обучения.
+\item
+  \href{https://www.samplefactory.dev/07-advanced-topics/serial-mode/}{Последовательный (однопроцессный) режим} для удобной отладки.
+\item
+  Высокая производительность как в средах на CPU, так и в \href{https://www.samplefactory.dev/09-environment-integrations/isaacgym/}{средах с GPU-ускорением}.
+\item
+  Обучение одного или нескольких агентов, self-play, возможность \href{https://www.samplefactory.dev/07-advanced-topics/multi-policy-training/}{одновременно обучать несколько политик} на одном или нескольких GPU.
+\item
+  Обучение на основе популяций (Population-Based Training, \href{https://www.samplefactory.dev/07-advanced-topics/pbt/}{PBT}).
+\item
+  Дискретные, непрерывные и гибридные пространства действий.
+\item
+  Пространства наблюдений на основе векторов, изображений и словарей.
+\item
+  Автоматическое создание архитектуры модели по спецификациям пространств действий и наблюдений; поддерживаются \href{https://www.samplefactory.dev/03-customization/custom-models/}{пользовательские архитектуры моделей}.
+\item
+  Возможность встраивания в другие проекты и полноценная поддержка \href{https://www.samplefactory.dev/03-customization/custom-environments/}{пользовательских сред}.
+\item
+  Подробные \href{https://www.samplefactory.dev/05-monitoring/metrics-reference/}{сводки WandB и TensorBoard}, а также \href{https://www.samplefactory.dev/05-monitoring/custom-metrics/}{пользовательские метрики}.
+\item
+  \href{https://www.samplefactory.dev/10-huggingface/huggingface/}{Интеграция с Hugging Face} для загрузки обученных моделей и метрик на Hub.
+\item
+  \href{https://www.samplefactory.dev/09-environment-integrations/mujoco/}{Множество} \href{https://www.samplefactory.dev/09-environment-integrations/atari/}{готовых} \href{https://www.samplefactory.dev/09-environment-integrations/vizdoom/}{интеграций} \href{https://www.samplefactory.dev/09-environment-integrations/dmlab/}{со средами}, включая настроенные параметры и обученные модели.
+\end{itemize}
+
+Все перечисленные политики доступны на Hub. Найдите их по тегу \href{https://huggingface.co/models?library=sample-factory&sort=downloads}{sample-factory}.
+
+\subsubsection{Как работает Sample Factory}\label{how-sample-factory-works}
+
+Sample Factory --- одна из \textbf{наиболее оптимизированных реализаций RL, доступных сообществу}.
+
+Она работает, \textbf{создавая несколько процессов: процессы сбора опыта (rollout workers), выполнения инференса (inference workers) и обучения (learner worker)}.
+
+Эти \emph{рабочие процессы} \textbf{обмениваются данными через общую память, что снижает накладные расходы на межпроцессное взаимодействие}.
+
+\emph{Процессы сбора опыта} взаимодействуют со средой и передают наблюдения \emph{процессам инференса}.
+
+\emph{Процессы инференса} используют фиксированную версию политики для вычисления действий и \textbf{отправляют эти действия обратно процессам сбора опыта}.
+
+После \emph{k} шагов процессы сбора опыта передают траекторию взаимодействий процессу обучения, \textbf{который использует её для обновления нейросети политики агента}.
+
+\CourseFigure{samplefactory.png}{Распределённая архитектура Sample Factory: сбор опыта, инференс и обучение \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/samplefactory.png}{[оригинал]}}
+
+\subsubsection{Модели Actor–Critic в Sample Factory}\label{actor-critic-models-in-sample-factory}
+
+Модели Actor–Critic в Sample Factory состоят из трёх компонентов:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Encoder (кодировщик)} --- обрабатывает входные наблюдения (изображения, векторы) и преобразует их в вектор признаков. Именно эту часть модели чаще всего требуется настраивать под свою задачу.
+\item
+  \textbf{Core (основной блок)} --- объединяет векторы от одного или нескольких кодировщиков; для агентов с памятью может включать однослойную или многослойную сеть LSTM/GRU.
+\item
+  \textbf{Decoder (декодировщик)} --- добавляет слои после основного блока модели перед вычислением выходов политики и ценности.
+\end{itemize}
+
+Библиотека спроектирована так, чтобы автоматически поддерживать любые пространства наблюдений и действий. Пользователи могут легко добавлять собственные модели. Подробнее об этом говорится в \href{https://www.samplefactory.dev/03-customization/custom-models/\#actor-critic-models-in-sample-factory}{документации}.
+
+\subsection{ViZDoom}\label{vizdoom}
+
+\href{https://vizdoom.cs.put.edu.pl/}{ViZDoom} --- \textbf{открытый интерфейс Python к игровому движку Doom Engine}.
+
+Библиотека создана в 2016 году Мареком Выдмухом (Marek Wydmuch) и Михалом Кемпкой (Michal Kempka) из Института вычислительных наук Познаньского технического университета (Польша).
+
+Библиотека позволяет \textbf{обучать агентов непосредственно по пикселям экрана в разных сценариях}, в том числе в командном Deathmatch, показанном на видео ниже. Поскольку основой ViZDoom служит игра 1990-х годов, на современном оборудовании её можно запускать с ускорением, \textbf{что даёт возможность сравнительно быстро обучать сложному поведению агентов}.
+
+Библиотека обладает следующими возможностями:
+
+\begin{itemize}
+\tightlist
+\item
+  Кроссплатформенность (Linux, macOS, Windows).
+\item
+  API для Python и C++.
+\item
+  Обёртки сред для \href{https://www.gymlibrary.dev/}{OpenAI Gym}.
+\item
+  Простое создание собственных сценариев (доступны визуальные редакторы, язык сценариев и примеры).
+\item
+  Асинхронный и синхронный режимы одиночной и многопользовательской игры.
+\item
+  Малый размер (несколько мегабайт) и высокая скорость (до 7000 кадров/с в синхронном однопоточном режиме).
+\item
+  Настраиваемые разрешение и параметры рендеринга.
+\item
+  Доступ к буферу глубины (трёхмерное зрение).
+\item
+  Автоматическая разметка игровых объектов, видимых в кадре.
+\item
+  Доступ к аудиобуферу.
+\item
+  Доступ к списку игровых акторов/объектов и геометрии карты.
+\item
+  Рендеринг без отображения окна и запись эпизодов.
+\item
+  Масштабирование времени в асинхронном режиме.
+\end{itemize}
+
+\subsection{Установка необходимых зависимостей ViZDoom}\label{we-first-need-to-install-some-dependencies-that-are-required-for-the-vizdoom-environment}
+
+После настройки среды выполнения Colab начнём с установки зависимостей, необходимых для запуска ViZDoom в Linux.
+
+Если вы выполняете задание локально на Mac, воспользуйтесь инструкцией по установке на \href{https://github.com/Farama-Foundation/ViZDoom/blob/master/doc/Quickstart.md\#-quickstart-for-macos-and-anaconda3-python-36}{странице GitHub}.
+
+\begin{lstlisting}
+# Install ViZDoom deps from
+# https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md#-linux
+
+apt-get install build-essential zlib1g-dev libsdl2-dev libjpeg-dev \
+nasm tar libbz2-dev libgtk2.0-dev cmake git libfluidsynth-dev libgme-dev \
+libopenal-dev timidity libwildmidi-dev unzip ffmpeg
+
+# Boost libraries
+apt-get install libboost-all-dev
+
+# Lua binding dependencies
+apt-get install liblua5.1-dev
+\end{lstlisting}
+
+\subsection{Установка Sample Factory и ViZDoom}\label{then-we-can-install-sample-factory-and-vizdoom}
+
+\begin{itemize}
+\tightlist
+\item
+  Установка может занять около 7 минут.
+\end{itemize}
+
+\begin{lstlisting}
+pip install sample-factory
+pip install vizdoom
+\end{lstlisting}
+
+\subsection{Настройка среды Doom в Sample Factory}\label{setting-up-the-doom-environment-in-sample-factory}
+
+\begin{lstlisting}
+import functools
+
+from sample_factory.algo.utils.context import global_model_factory
+from sample_factory.cfg.arguments import parse_full_cfg, parse_sf_args
+from sample_factory.envs.env_utils import register_env
+from sample_factory.train import run_rl
+
+from sf_examples.vizdoom.doom.doom_model import make_vizdoom_encoder
+from sf_examples.vizdoom.doom.doom_params import add_doom_env_args, doom_override_defaults
+from sf_examples.vizdoom.doom.doom_utils import DOOM_ENVS, make_doom_env_from_spec
+
+
+# Registers all the ViZDoom environments
+def register_vizdoom_envs():
+    for env_spec in DOOM_ENVS:
+        make_env_func = functools.partial(make_doom_env_from_spec, env_spec)
+        register_env(env_spec.name, make_env_func)
+
+
+# Sample Factory allows the registration of a custom Neural Network architecture
+# See https://github.com/alex-petrenko/sample-factory/blob/master/sf_examples/vizdoom/doom/doom_model.py for more details
+def register_vizdoom_models():
+    global_model_factory().register_encoder_factory(make_vizdoom_encoder)
+
+
+def register_vizdoom_components():
+    register_vizdoom_envs()
+    register_vizdoom_models()
+
+
+# parse the command line args and create a config
+def parse_vizdoom_cfg(argv=None, evaluation=False):
+    parser, _ = parse_sf_args(argv=argv, evaluation=evaluation)
+    # parameters specific to Doom envs
+    add_doom_env_args(parser)
+    # override Doom default values for algo parameters
+    doom_override_defaults(parser)
+    # second parsing pass yields the final configuration
+    final_cfg = parse_full_cfg(parser, argv)
+    return final_cfg
+\end{lstlisting}
+
+После завершения настройки можно приступить к обучению агента. Для этого мы выбрали задачу ViZDoom под названием \texttt{Health\ Gathering\ Supreme}.
+
+\subsubsection{Сценарий Health Gathering Supreme}\label{the-scenario-health-gathering-supreme}
+
+\CourseFigure{Health-Gathering-Supreme.png}{Сценарий ViZDoom «Health Gathering Supreme» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/Health-Gathering-Supreme.png}{[оригинал]}}
+
+Цель сценария --- \textbf{научить агента выживать, не сообщая ему напрямую, что именно обеспечивает выживание}. Агент знает лишь то, что \textbf{жизнь ценна}, а смерть нежелательна. Поэтому \textbf{ему предстоит самостоятельно выяснить, что продлевает его существование и как здоровье связано с выживанием}.
+
+Карта представляет собой прямоугольник со стенами и зелёным кислотным полом, который \textbf{периодически наносит урон игроку}. Изначально аптечки равномерно распределены по карте; время от времени с неба падает новая аптечка. \textbf{Аптечки восстанавливают часть здоровья игрока}; чтобы выжить, агент должен подбирать их. Эпизод заканчивается после смерти игрока либо по истечении отведённого времени.
+
+Дополнительные параметры сценария:
+
+\begin{itemize}
+\tightlist
+\item
+  Living\_reward = 1.
+\item
+  Три доступных действия: повернуть налево, повернуть направо, двигаться вперёд.
+\item
+  Одна доступная игровая переменная: HEALTH.
+\item
+  Штраф за смерть = 100.
+\end{itemize}
+
+Подробнее о доступных сценариях ViZDoom можно прочитать \href{https://github.com/Farama-Foundation/ViZDoom/tree/master/scenarios}{здесь}.
+
+Существуют и более сложные сценарии ViZDoom, например представленные на \href{https://github.com/edbeeching/3d_control_deep_rl}{этой странице GitHub}.
+
+\subsection{Обучение агента}\label{training-the-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  Обучим агента в течение 4\,000\,000 шагов. Это займёт приблизительно 20 минут.
+\end{itemize}
+
+\begin{lstlisting}
+## Start the training, this should take around 15 minutes
+register_vizdoom_components()
+
+# The scenario we train on today is health gathering
+# other scenarios include "doom_basic", "doom_two_colors_easy", "doom_dm", "doom_dwango5", "doom_my_way_home", "doom_deadly_corridor", "doom_defend_the_center", "doom_defend_the_line"
+env = "doom_health_gathering_supreme"
+cfg = parse_vizdoom_cfg(
+    argv=[f"--env={env}", "--num_workers=8", "--num_envs_per_worker=4", "--train_for_env_steps=4000000"]
+)
+
+status = run_rl(cfg)
+\end{lstlisting}
+
+\subsection{Оценка обученной политики и запись видео}\label{lets-take-a-look-at-the-performance-of-the-trained-policy-and-output-a-video-of-the-agent.}
+
+\begin{lstlisting}
+from sample_factory.enjoy import enjoy
+
+cfg = parse_vizdoom_cfg(
+    argv=[f"--env={env}", "--num_workers=1", "--save_video", "--no_render", "--max_num_episodes=10"], evaluation=True
+)
+status = enjoy(cfg)
+\end{lstlisting}
+
+\subsection{Визуализация поведения агента}\label{now-lets-visualize-the-performance-of-the-agent}
+
+\begin{lstlisting}
+from base64 import b64encode
+from IPython.display import HTML
+
+mp4 = open("/content/train_dir/default_experiment/replay.mp4", "rb").read()
+data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+HTML(
+    """
+<video width=640 controls>
+      <source src="%s" type="video/mp4">
+</video>
+"""
+    % data_url
+)
+\end{lstlisting}
+
+Агент кое-чему научился, но его результаты могли бы быть лучше. Очевидно, стоило бы продолжить обучение. Однако сначала опубликуем эту модель на Hub.
+
+\subsection{Публикация контрольной точки и видео на Hugging Face Hub}\label{now-lets-upload-your-checkpoint-and-video-to-the-hugging-face-hub}
+
+Чтобы поделиться моделью с сообществом, необходимо выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если аккаунта Hugging Face ещё нет, создайте его: \url{https://huggingface.co/join}.
+\item
+  Войдите в аккаунт и получите токен аутентификации на сайте Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Создайте новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правами записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена Hugging Face с правом записи \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Скопируйте токен.
+\item
+  Выполните следующую ячейку и вставьте токен.
+\end{itemize}
+
+Если вы не используете Google Colab или Jupyter Notebook, вместо этого выполните команду \texttt{huggingface-cli\ login}.
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login
+notebook_login()
+!git config --global credential.helper store
+\end{lstlisting}
+
+\begin{lstlisting}
+from sample_factory.enjoy import enjoy
+
+hf_username = "ThomasSimonini"  # insert your HuggingFace username here
+
+cfg = parse_vizdoom_cfg(
+    argv=[
+        f"--env={env}",
+        "--num_workers=1",
+        "--save_video",
+        "--no_render",
+        "--max_num_episodes=10",
+        "--max_num_frames=100000",
+        "--push_to_hub",
+        f"--hf_repository={hf_username}/rl_course_vizdoom_health_gathering_supreme",
+    ],
+    evaluation=True,
+)
+status = enjoy(cfg)
+\end{lstlisting}
+
+\subsection{Загрузка другой модели}\label{lets-load-another-model}
+
+Качество этой модели уже неплохое, но можно добиться большего! Загрузим с Hub агента, которого обучали в течение 10 миллиардов шагов, и посмотрим на его поведение.
+
+\begin{lstlisting}
+#download the agent from the hub
+python -m sample_factory.huggingface.load_from_hub -r edbeeching/doom_health_gathering_supreme_2222 -d ./train_dir
+\end{lstlisting}
+
+\begin{lstlisting}
+ls train_dir/doom_health_gathering_supreme_2222
+\end{lstlisting}
+
+\begin{lstlisting}
+env = "doom_health_gathering_supreme"
+cfg = parse_vizdoom_cfg(
+    argv=[
+        f"--env={env}",
+        "--num_workers=1",
+        "--save_video",
+        "--no_render",
+        "--max_num_episodes=10",
+        "--experiment=doom_health_gathering_supreme_2222",
+        "--train_dir=train_dir",
+    ],
+    evaluation=True,
+)
+status = enjoy(cfg)
+\end{lstlisting}
+
+\begin{lstlisting}
+mp4 = open("/content/train_dir/doom_health_gathering_supreme_2222/replay.mp4", "rb").read()
+data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+HTML(
+    """
+<video width=640 controls>
+      <source src="%s" type="video/mp4">
+</video>
+"""
+    % data_url
+)
+\end{lstlisting}
+
+\subsection{Дополнительные задания: Doom Deathmatch}\label{some-additional-challenges-doom-deathmatch}
+
+Обучение агента для Doom Deathmatch \textbf{занимает много часов и требует более мощной машины, чем доступная в Colab}.
+
+К счастью, \textbf{мы уже обучили агента в этом сценарии и опубликовали его на Hub!} Загрузим модель и посмотрим, как он играет.
+
+\begin{lstlisting}
+# Download the agent from the hub
+python -m sample_factory.huggingface.load_from_hub -r edbeeching/doom_deathmatch_bots_2222 -d ./train_dir
+\end{lstlisting}
+
+Поскольку агент играет достаточно долго, создание видео может занять \textbf{10 минут}.
+
+\begin{lstlisting}
+from sample_factory.enjoy import enjoy
+
+register_vizdoom_components()
+env = "doom_deathmatch_bots"
+cfg = parse_vizdoom_cfg(
+    argv=[
+        f"--env={env}",
+        "--num_workers=1",
+        "--save_video",
+        "--no_render",
+        "--max_num_episodes=1",
+        "--experiment=doom_deathmatch_bots_2222",
+        "--train_dir=train_dir",
+    ],
+    evaluation=True,
+)
+status = enjoy(cfg)
+mp4 = open("/content/train_dir/doom_deathmatch_bots_2222/replay.mp4", "rb").read()
+data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+HTML(
+    """
+<video width=640 controls>
+      <source src="%s" type="video/mp4">
+</video>
+"""
+    % data_url
+)
+\end{lstlisting}
+
+Вы \textbf{можете попробовать обучить собственного агента в этой среде} с использованием кода выше, но не в Colab. \textbf{Удачи!}
+
+Если хочется более простой сценарий, \textbf{попробуйте обучить агента в другой среде ViZDoom, например \texttt{doom\_deadly\_corridor} или \texttt{doom\_defend\_the\_center}}.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Это был последний основной модуль курса. Но мы ещё не закончили! В следующем \textbf{бонусном разделе рассматриваются некоторые из наиболее интересных, продвинутых и современных направлений глубокого обучения с подкреплением}.
+
+\subsection{Продолжайте учиться и совершенствоваться}\label{keep-learning-stay-awesome-2}
+
+\section{Заключение}\label{conclusion-1}
+
+На сегодня всё. Поздравляем с завершением модуля и практического руководства!
+
+Теперь, когда вы успешно обучили агента для Doom, почему бы не попробовать Deathmatch? Помните, что этот уровень значительно сложнее только что пройденного, \textbf{но это интересный эксперимент, который мы рекомендуем провести}.
+
+Если попробуете, обязательно поделитесь своей моделью в канале \texttt{\#rl-i-made-this} на нашем \href{https://www.hf.co/join/discord}{Discord-сервере}.
+
+Это последний основной модуль, однако курс ещё не закончен! В следующем \textbf{бонусном модуле мы рассмотрим некоторые из самых интересных, передовых и актуальных исследований в области глубокого обучения с подкреплением}.
+
+До следующей встречи!
+
+\subsection{Продолжайте учиться и совершенствоваться}\label{keep-learning-stay-awesome-3}
+
+\end{document}

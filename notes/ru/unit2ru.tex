@@ -1,0 +1,2341 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 2. Этот файл использует ../preamble.tex.
+% Сборка из notes/ru/: latexmk -pdf unit2ru.tex (VS Code / LaTeX Workshop onSave).
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit2/}}
+% The shared preamble has Unit 1 in its header: override it here per-document.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Deep RL от Hugging Face \enspace/\enspace Модуль 2}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 2: введение в Q-обучение}
+\author{Курс Deep RL от Hugging Face\\\small Полное учебное издание на основе исходных MDX-файлов}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Исходный материал: курс Deep RL от Hugging Face.\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{1em}
+\clearpage
+\section{Введение в Q-обучение}\label{introduction-to-q-learning}
+
+\CourseFigure{thumbnail.jpg}{Обложка модуля 2 \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/thumbnail.jpg}{[оригинал]}}
+
+В первом модуле курса мы познакомились с обучением с подкреплением (RL), процессом взаимодействия агента со средой и различными подходами к решению задач RL. Кроме того, мы \textbf{обучили первых агентов и загрузили их в Hugging Face Hub.}
+
+В этом модуле мы \textbf{подробнее изучим один из подходов к обучению с подкреплением --- методы на основе функции ценности (value-based methods)} и разберём наш первый алгоритм RL: \textbf{Q-обучение (Q-Learning).}
+
+Мы также \textbf{реализуем первого RL-агента с нуля} на основе Q-обучения и обучим его в двух средах:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  FrozenLake-v1 (нескользкий вариант): агенту нужно \textbf{добраться от начальной клетки (S) до цели (G)}, перемещаясь только по замёрзшим клеткам (F) и избегая прорубей (H).
+\item
+  Автономное такси: агент должен \textbf{научиться ориентироваться} в городе, чтобы \textbf{перевозить пассажиров из пункта A в пункт B.}
+\end{enumerate}
+
+\CourseFigure{envs.png}{Две учебные среды: FrozenLake и Taxi \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/envs.gif}{[оригинал]}}
+
+В частности, мы:
+
+\begin{itemize}
+\tightlist
+\item
+  Изучим \textbf{методы на основе функции ценности}.
+\item
+  Разберём \textbf{различия между методами Монте-Карло и обучением с временными разностями (Temporal Difference Learning)}.
+\item
+  Изучим и реализуем \textbf{наш первый алгоритм RL} --- Q-обучение.
+\end{itemize}
+
+Этот модуль \textbf{необходим для понимания глубокого Q-обучения (Deep Q-Learning)} --- первого алгоритма глубокого RL, который научился играть в игры Atari и в некоторых из них превзошёл уровень человека (Breakout, Space Invaders и др.).
+
+Итак, приступим!
+
+\section{Что такое RL? Краткое повторение}\label{what-is-rl-a-short-recap}
+
+В RL мы создаём агента, способного \textbf{принимать разумные решения}. Например, агента, который \textbf{учится играть в видеоигру}, или торгового агента, который \textbf{учится максимизировать прибыль}, выбирая, \textbf{какие акции покупать и когда их продавать.}
+
+\CourseFigure{rl-process.jpg}{Цикл обратной связи между агентом и средой \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/rl-process.jpg}{[оригинал]}}
+
+Чтобы принимать осмысленные решения, агент учится, \textbf{взаимодействуя со средой методом проб и ошибок}, и получает вознаграждения (положительные или отрицательные) \textbf{как единственный сигнал обратной связи.}
+
+Его цель --- \textbf{максимизировать ожидаемое суммарное вознаграждение} (согласно гипотезе вознаграждения).
+
+\textbf{Способ принятия решений агентом называется политикой \(\pi\):} по заданному состоянию политика выдаёт действие или распределение вероятностей по действиям. Иными словами, на основании наблюдения среды политика определяет, какое действие должен выполнить агент (либо вероятности выбора каждого действия).
+
+\CourseFigure{policy.jpg}{Политика сопоставляет наблюдениям действия \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/policy.jpg}{[оригинал]}}
+
+\textbf{Наша цель --- найти оптимальную политику \(\pi^*\),} то есть политику, обеспечивающую наилучшее ожидаемое суммарное вознаграждение.
+
+Для нахождения оптимальной политики (а значит, решения задачи RL) существуют \textbf{два основных подхода}:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Методы на основе политики (policy-based):} \textbf{обучают непосредственно политику}, чтобы выбирать действие по заданному состоянию.
+\item
+  \emph{Методы на основе ценности (value-based):} \textbf{обучают функцию ценности}, определяющую, \textbf{какие состояния предпочтительнее}, и затем используют её, \textbf{чтобы выбрать ведущее к ним действие.}
+\end{itemize}
+
+\CourseFigure{two-approaches.jpg}{Два основных подхода: непосредственное обучение политики и обучение функции ценности \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/two-approaches.jpg}{[оригинал]}}
+
+В этом модуле мы \textbf{подробнее рассмотрим методы на основе функции ценности.}
+
+\section{Два типа методов на основе ценности}\label{two-types-of-value-based-methods}
+
+В методах на основе ценности \textbf{мы обучаем функцию ценности}, которая \textbf{сопоставляет состоянию ожидаемую ценность нахождения в этом состоянии.}
+
+\CourseFigure{vbm-1.jpg}{Общая схема обучения с подкреплением на основе функции ценности \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/vbm-1.jpg}{[оригинал]}}
+
+Ценность состояния --- это \textbf{ожидаемая дисконтированная отдача}, которую агент может получить, если \textbf{начнёт из этого состояния и далее будет действовать согласно своей политике.}
+
+\begin{quote}
+\textbf{Примечание к курсу.} Но что значит «действовать согласно политике»? Ведь в методах на основе ценности мы обучаем функцию ценности, а не саму политику.
+\end{quote}
+
+Напомним, цель \textbf{RL-агента --- получить оптимальную политику \(\pi^*\).}
+
+Для поиска оптимальной политики мы рассмотрели два подхода:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Методы на основе политики:} \textbf{обучают политику напрямую}, чтобы выбрать действие по состоянию (или распределение вероятностей действий в этом состоянии). В таком варианте \textbf{функция ценности отсутствует.}
+\end{itemize}
+
+\CourseFigure{two-approaches-2.jpg}{Обучение на основе политики: действие непосредственно предсказывается политикой \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/two-approaches-2.jpg}{[оригинал]}}
+
+Политика принимает состояние и выдаёт действие. Детерминированная политика выдаёт для состояния одно действие, в отличие от стохастической, которая выдаёт распределение вероятностей по действиям.
+
+Следовательно, \textbf{мы не задаём поведение политики вручную: оно определяется в процессе обучения.}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Методы на основе ценности:} \textbf{обучают функцию ценности косвенным способом}, которая выдаёт ценность состояния или пары «состояние--действие». На основании этой функции наша политика \textbf{выбирает действие.}
+\end{itemize}
+
+Поскольку политика сама не обучается, \textbf{её поведение необходимо задать заранее.} Например, если требуется всегда выбирать действие с наибольшей ожидаемой выгодой согласно функции ценности, \textbf{мы используем жадную политику (Greedy Policy).}
+
+\CourseFigure{two-approaches-3.jpg}{Обучаемая функция ценности действий выдаёт значения для всех действий в заданном состоянии, после чего заранее определённая жадная политика выбирает действие с максимальной ценностью \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/two-approaches-3.jpg}{[оригинал]}}
+
+Таким образом, какой бы метод решения задачи вы ни использовали, \textbf{политика у агента будет всегда}. В методах на основе ценности политика не обучается: она представляет собой \textbf{простую заранее заданную функцию} (например, жадную политику), использующую значения функции ценности для выбора действий.
+
+Итак, различие состоит в следующем:
+
+\begin{itemize}
+\tightlist
+\item
+  В методах на основе политики \textbf{оптимальная политика (обозначаемая \(\pi^*\)) находится непосредственным обучением политики.}
+\item
+  В методах на основе ценности \textbf{нахождение оптимальной функции ценности (\(Q^*\) или \(V^*\), различие между ними рассмотрим ниже) позволяет получить оптимальную политику.}
+\end{itemize}
+
+\CourseFigure{link-value-policy.jpg}{Получение оптимальной политики из оптимальной функции ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[оригинал]}}
+
+На практике в методах на основе ценности чаще всего используют \textbf{\(\varepsilon\)-жадную политику}, которая балансирует исследование среды (exploration) и использование известной информации (exploitation). Подробнее об этом поговорим во второй части модуля при изучении Q-обучения.
+
+Как отмечалось выше, существуют два типа функций ценности:
+
+\subsection{Функция ценности состояния}\label{the-state-value-function}
+
+Функция ценности состояния для политики \(\pi\) записывается следующим образом:
+
+\CourseFigure{state-value-function-1.jpg}{Математическое определение функции ценности состояния \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/state-value-function-1.jpg}{[оригинал]}}
+
+Для каждого состояния функция ценности состояния выдаёт ожидаемую отдачу, если агент \textbf{начинает из этого состояния}, а затем всё время следует политике (на всех последующих шагах).
+
+\CourseFigure{state-value-function-2.jpg}{Если взять состояние со значением -7, это ожидаемая отдача при старте из него и выборе действий согласно нашей (жадной) политике: вправо, вправо, вправо, вниз, вниз, вправо, вправо \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/state-value-function-2.jpg}{[оригинал]}}
+
+\subsection{Функция ценности действия}\label{the-action-value-function}
+
+Функция ценности действия для каждой пары «состояние--действие» \textbf{выдаёт ожидаемую отдачу}, если агент начинает в этом состоянии, выполняет данное действие, а затем всё время следует политике.
+
+Ценность выполнения действия \(a\) в состоянии \(s\) при политике \(\pi\) равна:
+
+\CourseFigure{action-state-value-function-1.jpg}{Математическое определение функции ценности действия \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/action-state-value-function-1.jpg}{[оригинал]}}
+
+\CourseFigure{action-state-value-function-2.jpg}{Ценности действий для выбранного состояния и действия \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/action-state-value-function-2.jpg}{[оригинал]}}
+
+Мы видим следующее различие:
+
+\begin{itemize}
+\tightlist
+\item
+  Для функции ценности состояния вычисляется \textbf{ценность состояния \(S_t\)}.
+\item
+  Для функции ценности действия вычисляется \textbf{ценность пары «состояние--действие» (\(S_t,A_t\))}, то есть ценность выбора данного действия в данном состоянии.
+\end{itemize}
+
+\CourseFigure{two-types.jpg}{Примечание: в примере функции ценности действий показаны не все пары «состояние--действие» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/two-types.jpg}{[оригинал]}}
+
+В обоих случаях, какую бы функцию ценности мы ни выбрали (состояний или действий), \textbf{возвращаемое значение представляет собой ожидаемую отдачу.}
+
+Однако проблема заключается в том, что \textbf{для вычисления КАЖДОЙ ценности состояния или пары «состояние--действие» необходимо суммировать все вознаграждения, которые агент может получить, начиная из этого состояния.}
+
+Это может потребовать больших вычислительных затрат. \textbf{Именно здесь нам помогает уравнение Беллмана.}
+
+\section{Уравнение Беллмана: упрощаем оценку ценности}\label{the-bellman-equation-simplify-our-value-estimation}
+
+Уравнение Беллмана \textbf{упрощает вычисление ценности состояния или пары «состояние--действие».}
+
+\CourseFigure{bellman.jpg}{Уравнение Беллмана и рекурсивная оценка ценности \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman.jpg}{[оригинал]}}
+
+Из уже изученного мы знаем, что для вычисления \(V(S_t)\) (ценности состояния) нужно найти отдачу при старте из этого состояния и дальнейшем бесконечном следовании политике. \textbf{(В следующем примере политика является жадной; для простоты мы не дисконтируем вознаграждения.)}
+
+Итак, чтобы вычислить \(V(S_t)\), нужно найти сумму ожидаемых вознаграждений. Следовательно:
+
+\CourseFigure{bellman2.jpg}{Ценность состояния 1: сумма вознаграждений, если агент начинает из него и на всех шагах следует жадной политике, выбирая действия, ведущие к состояниям с наибольшей ценностью \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman2.jpg}{[оригинал]}}
+
+Чтобы вычислить \(V(S_{t+1})\), необходимо найти отдачу при старте из состояния \(S_{t+1}\).
+
+\CourseFigure{bellman3.jpg}{Ценность состояния 2: сумма вознаграждений, если агент начинает из него и следует политике на всех шагах \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman3.jpg}{[оригинал]}}
+
+Как вы, возможно, заметили, мы повторяем вычисление ценностей разных состояний. Это становится трудоёмким, когда нужно оценить каждое состояние или пару «состояние--действие».
+
+Вместо прямого вычисления ожидаемой отдачи для каждого состояния или каждой пары \textbf{можно использовать уравнение Беллмана.} (Подсказка: если вы знакомы с динамическим программированием, здесь используется очень похожая идея. Если нет --- ничего страшного!)
+
+Уравнение Беллмана задаёт рекурсивную зависимость: вместо того чтобы каждый раз заново вычислять отдачу для состояния, мы можем представить его ценность следующим образом:
+
+\textbf{Непосредственное вознаграждение \(R_{t+1}\) + дисконтированная ценность следующего состояния (\(\gamma * V(S_{t+1})\)).}
+
+\CourseFigure{bellman4.jpg}{Разложение по Беллману: непосредственное вознаграждение и дисконтированная ценность следующего состояния \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman4.jpg}{[оригинал]}}
+
+Вернёмся к примеру: ценность состояния 1 равна ожидаемой суммарной отдаче, если начать именно в этом состоянии.
+
+\CourseFigure{bellman2.jpg}{Суммарная отдача при старте из первого состояния траектории \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman2.jpg}{[оригинал]}}
+
+Чтобы вычислить ценность состояния 1, нужно сложить вознаграждения, \textbf{полученные при старте из состояния 1}, и дальнейшем следовании \textbf{политике на всех шагах.}
+
+Это равносильно записи: \(V(S_{t})\) = непосредственное вознаграждение \(R_{t+1}\) + дисконтированная ценность следующего состояния \(\gamma * V(S_{t+1})\).
+
+\CourseFigure{bellman6.jpg}{Для простоты дисконтирование не применяется: \(\gamma = 1\) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman6.jpg}{[оригинал]}}
+
+Ради простоты здесь мы не дисконтируем вознаграждения, поэтому \(\gamma = 1\). Однако в разделе о Q-обучении этого модуля мы рассмотрим пример с \(\gamma = 0.99\).
+
+\begin{itemize}
+\tightlist
+\item
+  Ценность \(V(S_{t+1})\) = непосредственное вознаграждение \(R_{t+2}\) + дисконтированная ценность следующего состояния (\(\gamma * V(S_{t+2})\)).
+\item
+  И так далее.
+\end{itemize}
+
+Подведём итог: идея уравнения Беллмана состоит в том, что вместо вычисления каждой ценности как суммы ожидаемых вознаграждений, \textbf{что требует длительных вычислений}, мы представляем её как \textbf{сумму непосредственного вознаграждения и дисконтированной ценности следующего состояния.}
+
+Прежде чем переходить к следующему разделу, подумайте о роли коэффициента \(\gamma\) в уравнении Беллмана. Что произойдёт при очень малом \(\gamma\) (например, 0.1 или даже 0)? Что будет при \(\gamma=1\)? А если он очень большой, например миллион?
+
+\section{Методы Монте-Карло и обучение с временными разностями}\label{monte-carlo-vs-temporal-difference-learning}
+
+Прежде чем перейти непосредственно к Q-обучению, обсудим две стратегии обучения.
+
+Напомним, RL-агент \textbf{учится через взаимодействие со средой}. Идея заключается в том, что \textbf{на основании полученного опыта и вознаграждения агент обновляет функцию ценности или политику.}
+
+Методы Монте-Карло (Monte Carlo) и временных разностей (Temporal Difference, TD) --- две разные \textbf{стратегии обучения функции ценности или политики}. Обе \textbf{используют накопленный опыт для решения задачи RL.}
+
+С одной стороны, метод Монте-Карло использует \textbf{целый эпизод взаимодействия перед обновлением}. С другой стороны, TD-обучению достаточно \textbf{одного шага (\(S_t,A_t,R_{t+1},S_{t+1}\)) для обновления.}
+
+Объясним оба подхода \textbf{на примере метода на основе ценности.}
+
+\subsection{Монте-Карло: обучение в конце эпизода}\label{monte-carlo-learning-at-the-end-of-the-episode}
+
+Метод Монте-Карло ждёт завершения эпизода, вычисляет \(G_t\) (отдачу) и использует её \textbf{как целевое значение при обновлении \(V(S_t)\).}
+
+Таким образом, для обновления функции ценности нужен \textbf{полный эпизод взаимодействия со средой.}
+
+\CourseFigure{monte-carlo-approach.jpg}{Оценка ценности методом Монте-Карло по отдаче полного эпизода \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/monte-carlo-approach.jpg}{[оригинал]}}
+
+Рассмотрим пример:
+
+\CourseFigure{MC-2.jpg}{Обучение Монте-Карло: пошаговый пример (этап 2) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\item
+  Каждый эпизод начинается \textbf{в одной и той же начальной точке.}
+\item
+  \textbf{Агент выбирает действия согласно политике}. Например, с помощью \(\varepsilon\)-жадной стратегии, чередующей исследование среды (случайные действия) и использование известных знаний.
+\item
+  Мы получаем \textbf{вознаграждение и следующее состояние.}
+\item
+  Эпизод завершается, если кошка съедает мышь или мышь делает \textgreater{} 10 шагов.
+\item
+  В конце эпизода \textbf{у нас есть список кортежей «состояние, действие, вознаграждение, следующее состояние».}
+\end{itemize}
+
+Например: {[}{[}нижняя клетка 3, двигаться влево, +1, нижняя клетка 2{]}, {[}нижняя клетка 2, двигаться влево, +0, нижняя клетка 1{]}\ldots{]}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Агент суммирует все вознаграждения в отдачу \(G_t\)}, чтобы оценить успешность своих действий.
+\item
+  Затем \textbf{обновляет \(V(s_t)\) по следующей формуле:}
+\end{itemize}
+
+\CourseFigure{MC-3.jpg}{Обучение Монте-Карло: пошаговый пример (этап 3) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-3.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  После этого \textbf{начинается новая игра с учётом полученных знаний.}
+\end{itemize}
+
+С каждым новым эпизодом \textbf{агент постепенно учится играть всё лучше.}
+
+\CourseFigure{MC-3p.jpg}{Обучение Монте-Карло: пошаговый пример (этап 3) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-3p.jpg}{[оригинал]}}
+
+Например, если обучать функцию ценности состояния методом Монте-Карло:
+
+\begin{itemize}
+\tightlist
+\item
+  Сначала мы инициализируем функцию ценности так, чтобы \textbf{она возвращала 0 для каждого состояния}.
+\item
+  Скорость обучения (learning rate, lr) равна 0.1, а коэффициент дисконтирования равен 1 (то есть дисконтирования нет).
+\item
+  Мышь \textbf{исследует среду и совершает случайные действия}.
+\end{itemize}
+
+\CourseFigure{MC-4.jpg}{Обучение Монте-Карло: пошаговый пример (этап 4) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-4.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Мышь выполнила более 10 шагов, поэтому эпизод завершился.
+\end{itemize}
+
+\CourseFigure{MC-4p.jpg}{Обучение Монте-Карло: пошаговый пример (этап 4) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-4p.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Имея список state, action, rewards, next\_state, \textbf{нам нужно вычислить отдачу \(G{t=0}\)}.
+\end{itemize}
+
+\(G_t = R_{t+1} + R_{t+2} + R_{t+3} ...\) (для простоты вознаграждения не дисконтируются).
+
+\(G_0 = R_{1} + R_{2} + R_{3}\ldots\)
+
+\(G_0 = 1 + 0 + 0 + 0 + 0 + 0 + 1 + 1 + 0 + 0\)
+
+\(G_0 = 3\)
+
+\begin{itemize}
+\tightlist
+\item
+  Теперь можно вычислить \textbf{новое} значение \(V(S_0)\):
+\end{itemize}
+
+\CourseFigure{MC-5.jpg}{Обучение Монте-Карло: пошаговый пример (этап 5) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-5.jpg}{[оригинал]}}
+
+\(V(S_0) = V(S_0) + lr * [G_0 - V(S_0)]\)
+
+\(V(S_0) = 0 + 0.1 * [3 - 0]\)
+
+\(V(S_0) = 0.3\)
+
+\CourseFigure{MC-5p.jpg}{Обучение Монте-Карло: пошаговый пример (этап 5) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/MC-5p.jpg}{[оригинал]}}
+
+\subsection{Обучение с временными разностями: обновление на каждом шаге}\label{temporal-difference-learning-learning-at-each-step}
+
+\textbf{При обучении с временными разностями достаточно одного взаимодействия (одного шага), дающего \(S_{t+1}\)}, чтобы сформировать TD-цель и обновить \(V(S_t)\), используя \(R_{t+1}\) и \(\gamma * V(S_{t+1})\).
+
+Идея \textbf{TD состоит в обновлении \(V(S_t)\) на каждом шаге.}
+
+Но поскольку полный эпизод ещё не пройден, мы не знаем \(G_t\) (ожидаемую отдачу). Вместо этого \textbf{мы оцениваем \(G_t\) как сумму \(R_{t+1}\) и дисконтированной ценности следующего состояния.}
+
+Это называется \emph{bootstrap-оцениванием}. Такое название связано с тем, что \textbf{TD-обновление частично опирается на уже имеющуюся оценку \(V(S_{t+1})\), а не на полную наблюдённую отдачу \(G_t\).}
+
+\CourseFigure{TD-1.jpg}{Обучение с временными разностями: пошаговый пример (этап 1) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-1.jpg}{[оригинал]}}
+
+Этот метод называют TD(0), или \textbf{одношаговым TD (функция ценности обновляется после каждого отдельного шага).}
+
+\CourseFigure{TD-1p.jpg}{Обучение с временными разностями: пошаговый пример (этап 1) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-1p.jpg}{[оригинал]}}
+
+Возьмём тот же пример.
+
+\CourseFigure{TD-2.jpg}{Обучение с временными разностями: пошаговый пример (этап 2) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Инициализируем функцию ценности так, чтобы для каждого состояния она возвращала ноль.
+\item
+  Скорость обучения (lr) равна 0.1, коэффициент дисконтирования --- 1 (без дисконтирования).
+\item
+  Мышь начинает исследовать среду и выполняет случайное действие: \textbf{движется влево}.
+\item
+  Она получает вознаграждение \(R_{t+1}=1\), потому что \textbf{съела кусочек сыра}.
+\end{itemize}
+
+\CourseFigure{TD-2p.jpg}{Обучение с временными разностями: пошаговый пример (этап 2) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-2p.jpg}{[оригинал]}}
+
+\CourseFigure{TD-3.jpg}{Обучение с временными разностями: пошаговый пример (этап 3) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-3.jpg}{[оригинал]}}
+
+Теперь можно обновить \(V(S_0)\):
+
+Новое значение \(V(S_0) = V(S_0) + lr * [R_1 + \gamma * V(S_1) - V(S_0)]\).
+
+Новое значение \(V(S_0) = 0 + 0.1 * [1 + 1 * 0-0]\).
+
+Новое значение \(V(S_0) = 0.1\).
+
+Таким образом, мы только что обновили функцию ценности для состояния 0.
+
+Теперь \textbf{продолжим взаимодействие со средой, используя обновлённую функцию ценности.}
+
+\CourseFigure{TD-3p.jpg}{Обучение с временными разностями: пошаговый пример (этап 3) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-3p.jpg}{[оригинал]}}
+
+Подведём итоги:
+
+\begin{itemize}
+\tightlist
+\item
+  В \emph{методе Монте-Карло} функция ценности обновляется по завершении целого эпизода, поэтому \textbf{используется фактическая дисконтированная отдача этого эпизода.}
+\item
+  При \emph{TD-обучении} функция ценности обновляется после одного шага; неизвестную величину \(G_t\) заменяет \textbf{оценка отдачи, называемая TD-целью (TD target).}
+\end{itemize}
+
+\CourseFigure{Summary.jpg}{Сравнение обучения Монте-Карло и обучения с временными разностями \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Summary.jpg}{[оригинал]}}
+
+\section{Промежуточное повторение}\label{mid-way-recap}
+
+Прежде чем перейти к Q-обучению, подведём итог изученному.
+
+Существуют два типа функций ценности:
+
+\begin{itemize}
+\tightlist
+\item
+  Функция ценности состояния: возвращает ожидаемую отдачу, если \textbf{агент начинает из заданного состояния и затем всегда следует политике.}
+\item
+  Функция ценности действия: возвращает ожидаемую отдачу, если \textbf{агент начинает из заданного состояния, выполняет в нём заданное действие}, а затем всегда следует политике.
+\item
+  В методах на основе ценности вместо обучения политики \textbf{мы задаём политику вручную} и обучаем функцию ценности. Если найдена оптимальная функция ценности, \textbf{можно получить оптимальную политику.}
+\end{itemize}
+
+Существуют два способа обновления функции ценности:
+
+\begin{itemize}
+\tightlist
+\item
+  В \emph{методе Монте-Карло} обновление выполняется после целого эпизода, поэтому \textbf{используется фактическая дисконтированная отдача этого эпизода.}
+\item
+  При \emph{TD-обучении} обновление выполняется после одного шага; неизвестное \(G_t\) заменяется \textbf{оценкой отдачи --- TD-целью.}
+\end{itemize}
+
+\CourseFigure{summary-learning-mtds.jpg}{Краткое сравнение методов обучения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/summary-learning-mtds.jpg}{[оригинал]}}
+
+\section{Промежуточный тест}\label{mid-way-quiz}
+
+Лучший способ учиться и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{избежать иллюзии компетентности} --- \textbf{проверять себя}. Это поможет выявить \textbf{пробелы, требующие повторения}.
+
+\subsubsection{Вопрос 1. Какие два основных подхода используются для поиска оптимальной политики?}\label{q1-what-are-the-two-main-approaches-to-find-optimal-policy}
+
+\textbf{Выберите все подходящие ответы.}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Методы на основе политики
+\item
+  \textbf{B.} Методы на основе случайного выбора
+\item
+  \textbf{C.} Методы на основе ценности
+\item
+  \textbf{D.} Методы эволюционных стратегий
+\end{itemize}
+
+\subsubsection{Вопрос 2. Что такое уравнение Беллмана?}\label{q2-what-is-the-bellman-equation}
+
+\subsubsection{Вопрос 3. Определите каждую составляющую уравнения Беллмана}\label{q3-define-each-part-of-the-bellman-equation}
+
+\CourseFigure{bellman4-quiz.jpg}{Задание по уравнению Беллмана \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman4-quiz.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 4. Чем различаются методы Монте-Карло и обучения с временными разностями?}\label{q4-what-is-the-difference-between-monte-carlo-and-temporal-difference-learning-methods}
+
+\textbf{Выберите все подходящие ответы.}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} При использовании методов Монте-Карло функция ценности обновляется после полного эпизода
+\item
+  \textbf{B.} При использовании методов Монте-Карло функция ценности обновляется после одного шага
+\item
+  \textbf{C.} При TD-обучении функция ценности обновляется после полного эпизода
+\item
+  \textbf{D.} При TD-обучении функция ценности обновляется после одного шага
+\end{itemize}
+
+\subsubsection{Вопрос 5. Объясните каждую часть формулы TD-обучения}\label{q5-define-each-part-of-temporal-difference-learning-formula}
+
+\CourseFigure{td-ex.jpg}{Упражнение по обучению с временными разностями \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/td-ex.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 6. Объясните каждую часть формулы Монте-Карло}\label{q6-define-each-part-of-monte-carlo-learning-formula}
+
+\CourseFigure{mc-ex.jpg}{Упражнение по методу Монте-Карло \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/mc-ex.jpg}{[оригинал]}}
+
+\subsection{Ответы и объяснения}\label{answer-key-and-explanations}
+
+\subsubsection{Вопрос 1. Какие два основных подхода используются для поиска оптимальной политики?}\label{q1-what-are-the-two-main-approaches-to-find-optimal-policy-1}
+
+\textbf{Правильные ответы: A, C}
+
+\begin{itemize}
+\item
+  \textbf{Вариант A (верно):} методы на основе политики обучают саму политику, чтобы определять действие по заданному состоянию.
+\item
+  \textbf{Вариант C (верно):} методы на основе ценности обучают функцию ценности, определяющую предпочтительность состояний, а затем используют её для выбора действия, ведущего к более ценному состоянию.
+\end{itemize}
+
+\subsubsection{Вопрос 2. Что такое уравнение Беллмана?}\label{q2-what-is-the-bellman-equation-1}
+
+\textbf{Уравнение Беллмана задаёт рекурсивную зависимость:} вместо того чтобы отдельно вычислять полную отдачу для каждого состояния, можно представить его ценность как:
+
+Rt+1 + gamma * V(St+1)
+
+Непосредственное вознаграждение + дисконтированная ценность следующего состояния.
+
+\subsubsection{Вопрос 3. Объясните каждую составляющую уравнения Беллмана}\label{q3-define-each-part-of-the-bellman-equation-1}
+
+\CourseFigure{bellman4.jpg}{Разложение Беллмана на непосредственное вознаграждение и дисконтированную ценность следующего состояния \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/bellman4.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 4. Чем различаются методы Монте-Карло и TD-обучения?}\label{q4-what-is-the-difference-between-monte-carlo-and-temporal-difference-learning-methods-1}
+
+\textbf{Правильные ответы: A, D}
+
+\subsubsection{Вопрос 5. Объясните каждую часть формулы обучения с временными разностями}\label{q5-define-each-part-of-temporal-difference-learning-formula-1}
+
+\CourseFigure{TD-1.jpg}{Обучение с временными разностями: пошаговый пример (этап 1) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-1.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 6. Объясните каждую часть формулы Монте-Карло}\label{q6-define-each-part-of-monte-carlo-learning-formula-1}
+
+\CourseFigure{monte-carlo-approach.jpg}{Оценка ценности методом Монте-Карло по полной отдаче эпизода \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/monte-carlo-approach.jpg}{[оригинал]}}
+
+Поздравляем с завершением теста! Если вы ответили не на всё, вернитесь к предыдущим разделам и ещё раз разберите сложные моменты, чтобы закрепить знания.
+
+\section{Знакомство с Q-обучением}\label{introducing-q-learning}
+
+\subsection{Что такое Q-обучение?}\label{what-is-q-learning}
+
+Q-обучение --- это \textbf{off-policy метод на основе ценности, использующий TD-подход для обучения функции ценности действий:}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Off-policy}: об этом понятии мы поговорим в конце модуля.
+\item
+  \emph{Метод на основе ценности}: находит оптимальную политику косвенно, обучая функцию ценности состояний или действий, которая определяет \textbf{ценность каждого состояния или пары «состояние--действие».}
+\item
+  \emph{TD-подход:} \textbf{обновляет функцию ценности действий на каждом шаге, а не в конце эпизода.}
+\end{itemize}
+
+\textbf{Q-обучение --- это алгоритм обучения Q-функции}, то есть \textbf{функции ценности действий}, определяющей ценность нахождения в заданном состоянии и выполнения в нём заданного действия.
+
+\CourseFigure{Q-function.jpg}{По состоянию и действию Q-функция возвращает ценность пары «состояние--действие», также называемую Q-значением \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-function.jpg}{[оригинал]}}
+
+\textbf{Буква Q происходит от слова «Quality» --- качества (ценности) данного действия в данном состоянии.}
+
+Напомним различие между ценностью и вознаграждением:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Ценность состояния} или \emph{пары «состояние--действие»} --- это ожидаемое суммарное вознаграждение, которое получит агент, начиная из данного состояния (или пары) и далее следуя политике.
+\item
+  \emph{Вознаграждение} --- это \textbf{сигнал обратной связи от среды} после выполнения действия в конкретном состоянии.
+\end{itemize}
+
+Внутри Q-функция представляется \textbf{Q-таблицей: каждая её ячейка соответствует ценности пары «состояние--действие».} Можно считать Q-таблицу \textbf{памятью или шпаргалкой нашей Q-функции.}
+
+Рассмотрим пример с лабиринтом.
+
+\CourseFigure{Maze-1.jpg}{Q-таблица на примере лабиринта с мышью и сыром (схема 1) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Maze-1.jpg}{[оригинал]}}
+
+Q-таблица только что инициализирована, поэтому все значения равны нулю. \textbf{Для каждого состояния и действия в ней хранится соответствующая ценность.} В этом простом примере состояние определяется только положением мыши. Следовательно, в Q-таблице будет \(2*3\) строки: по одной на каждую возможную позицию мыши. В более сложных задачах состояние может содержать гораздо больше информации, чем положение агента.
+
+\CourseFigure{Maze-2.jpg}{Q-таблица на примере лабиринта с мышью и сыром (схема 2) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Maze-2.jpg}{[оригинал]}}
+
+Здесь видно, что \textbf{ценность пары «начальное состояние, действие вверх» равна 0:}
+
+\CourseFigure{Maze-3.jpg}{Q-таблица на примере лабиринта с мышью и сыром (схема 3) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Maze-3.jpg}{[оригинал]}}
+
+Таким образом, Q-функция использует Q-таблицу, \textbf{содержащую ценность каждой пары «состояние--действие».} Получив состояние и действие, \textbf{Q-функция ищет в таблице соответствующее значение и возвращает его.}
+
+\CourseFigure{Q-function-2.jpg}{Поиск ценности пары «состояние--действие» в Q-таблице \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-function-2.jpg}{[оригинал]}}
+
+Итак, \emph{Q-обучение} --- это \textbf{алгоритм RL, который:}
+
+\begin{itemize}
+\tightlist
+\item
+  Обучает \emph{Q-функцию} (\textbf{функцию ценности действий}), представленную внутри \textbf{Q-таблицей со значениями для всех пар «состояние--действие»}.
+\item
+  По заданным состоянию и действию \textbf{находит в Q-таблице соответствующую ценность}.
+\item
+  После завершения обучения \textbf{даёт оптимальную Q-функцию, а значит, и оптимальную Q-таблицу}.
+\item
+  Если \textbf{Q-функция оптимальна}, то \textbf{оптимальна и политика}: мы \textbf{знаем наилучшее действие для каждого состояния}.
+\end{itemize}
+
+\CourseFigure{link-value-policy.jpg}{Восстановление оптимальной политики из оптимальной функции ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[оригинал]}}
+
+Сначала \textbf{Q-таблица бесполезна, поскольку содержит произвольные значения для всех пар «состояние--действие»} (обычно мы заполняем её нулями). По мере того как агент \textbf{исследует среду, а мы обновляем Q-таблицу, она всё лучше приближает} оптимальную функцию ценности и соответствующую политику.
+
+\CourseFigure{Q-learning-1.jpg}{По мере обучения Q-таблица становится точнее и позволяет оценивать полезность каждой пары «состояние--действие» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-1.jpg}{[оригинал]}}
+
+Теперь, когда мы разобрались с Q-обучением, Q-функцией и Q-таблицей, \textbf{рассмотрим сам алгоритм Q-обучения подробнее}.
+
+\subsection{Алгоритм Q-обучения}\label{the-q-learning-algorithm}
+
+Перед нами псевдокод Q-обучения. Разберём каждую его часть и \textbf{посмотрим на простом примере, как он работает, прежде чем реализовывать его.} Не пугайтесь: всё проще, чем кажется! Пройдём по шагам.
+
+\CourseFigure{Q-learning-2.jpg}{Алгоритм Q-обучения и псевдокод обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-2.jpg}{[оригинал]}}
+
+\subsubsection{Шаг 1. Инициализация Q-таблицы}\label{step-1-we-initialize-the-q-table}
+
+\CourseFigure{Q-learning-3.jpg}{Q-обучение: выбор действия с помощью \(\varepsilon\)-жадной политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-3.jpg}{[оригинал]}}
+
+Необходимо инициализировать Q-таблицу для всех пар «состояние--действие». \textbf{Чаще всего все значения инициализируют нулями.}
+
+\subsubsection{\texorpdfstring{Шаг 2. Выбор действия с помощью \(\varepsilon\)-жадной стратегии}{Шаг 2. Выбор действия с помощью epsilon-жадной стратегии}}\label{step-2-choose-an-action-using-the-epsilon-greedy-strategy}
+
+\CourseFigure{Q-learning-4.jpg}{\(\varepsilon\)-жадная стратегия: исследование и использование полученных знаний \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-4.jpg}{[оригинал]}}
+
+\(\varepsilon\)-жадная стратегия --- это политика, обеспечивающая компромисс между исследованием среды (exploration) и использованием известных знаний (exploitation).
+
+Идея состоит в следующем. При начальном значении \(\varepsilon=1.0\):
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{С вероятностью \(1-\varepsilon\):} выполняется \textbf{использование знаний (exploitation)} --- агент выбирает действие с наибольшей ценностью пары «состояние--действие».
+\item
+  \emph{С вероятностью \(\varepsilon\):} выполняется \textbf{исследование (exploration)} --- выбирается случайное действие.
+\end{itemize}
+
+В начале обучения \textbf{вероятность исследования велика, поскольку \(\varepsilon\) близко к единице, и агент большую часть времени исследует среду.} По мере обучения \textbf{Q-таблица всё точнее оценивает действия, поэтому мы постепенно уменьшаем \(\varepsilon\)}: необходимость исследования снижается, а использование накопленных знаний становится важнее.
+
+\CourseFigure{Q-learning-5.jpg}{Q-обучение: выполнение действия и наблюдение перехода \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-5.jpg}{[оригинал]}}
+
+\subsubsection{\texorpdfstring{Шаг 3. Выполняем действие \(A_t\), получаем вознаграждение \(R_{t+1}\) и следующее состояние \(S_{t+1}\)}{Шаг 3. Выполняем действие At, получаем вознаграждение R(t+1) и следующее состояние S(t+1)}}\label{step-3-perform-action-at-get-reward-rt1-and-next-state-st1}
+
+\CourseFigure{Q-learning-6.jpg}{Q-обучение: обновление ценности действия по TD-цели \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-6.jpg}{[оригинал]}}
+
+\subsubsection{\texorpdfstring{Шаг 4. Обновляем \(Q(S_t,A_t)\)}{Шаг 4. Обновляем Q(St,At)}}\label{step-4-update-qst-at}
+
+Напомним, что при TD-обучении мы обновляем политику или функцию ценности (в зависимости от выбранного RL-подхода) \textbf{после одного шага взаимодействия со средой.}
+
+Для формирования TD-цели \textbf{мы использовали непосредственное вознаграждение \(R_{t+1}\) и дисконтированную ценность следующего состояния}, которую вычисляем, находя действие, максимизирующее текущую Q-функцию в следующем состоянии. Это и есть bootstrap-оценивание.
+
+\CourseFigure{Q-learning-7.jpg}{Q-обучение: повторение обновлений на нескольких эпизодах \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-7.jpg}{[оригинал]}}
+
+Следовательно, \textbf{формула обновления \(Q(S_t,A_t)\) имеет вид:}
+
+\CourseFigure{Q-learning-8.jpg}{Q-обучение: общая схема алгоритма \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-8.jpg}{[оригинал]}}
+
+Для обновления \(Q(S_t,A_t)\):
+
+\begin{itemize}
+\tightlist
+\item
+  Нам нужны \(S_t,A_t,R_{t+1},S_{t+1}\).
+\item
+  Для обновления Q-значения пары «состояние--действие» мы используем TD-цель.
+\end{itemize}
+
+Как формируется TD-цель?
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  После выполнения действия \(A_t\) мы получаем вознаграждение \(R_{t+1}\).
+\item
+  Чтобы получить \textbf{наилучшую ценность пары «состояние--действие»} в следующем состоянии, используем жадную политику, выбирающую оптимальное следующее действие. Обратите внимание: это не \(\varepsilon\)-жадная политика, она всегда выбирает действие с наибольшим Q-значением.
+\end{enumerate}
+
+После обновления Q-значения мы переходим в новое состояние и снова выбираем действие \textbf{с помощью \(\varepsilon\)-жадной политики.}
+
+\textbf{Именно поэтому Q-обучение называют off-policy алгоритмом.}
+
+\subsection{Off-policy и on-policy: различия}\label{off-policy-vs-on-policy}
+
+Различие довольно тонкое:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Off-policy:} для \textbf{выбора действий (взаимодействия со средой) и обновления при обучении используются разные политики.}
+\end{itemize}
+
+Например, в Q-обучении \(\varepsilon\)-жадная политика выбора действий отличается от жадной политики, \textbf{используемой для нахождения наилучшего действия в следующем состоянии при обновлении Q-значения.}
+
+\CourseFigure{off-on-1.jpg}{Off-policy: политика поведения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/off-on-1.jpg}{[оригинал]}}
+
+Она отличается от политики, используемой при обновлении в ходе обучения:
+
+\CourseFigure{off-on-2.jpg}{Off-policy: политика обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/off-on-2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{On-policy:} \textbf{для выбора действий и обновления используется одна и та же политика.}
+\end{itemize}
+
+Например, в алгоритме Sarsa --- другом методе на основе ценности --- \textbf{следующую пару «состояние--действие» выбирает \(\varepsilon\)-жадная, а не жадная политика.}
+
+\CourseFigure{off-on-3.jpg}{On-policy: одинаковая политика при взаимодействии и обновлении \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/off-on-3.jpg}{[оригинал]}}
+
+\CourseFigure{off-on-4.jpg}{Сравнение методов off-policy и on-policy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/off-on-4.jpg}{[оригинал]}}
+
+\section{Пример Q-обучения}\label{a-q-learning-example}
+
+Чтобы лучше понять Q-обучение, рассмотрим простой пример.
+
+\CourseFigure{Maze-Example-2.jpg}{Лабиринт с мышью и сыром: правила вознаграждений и завершения эпизода \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Maze-Example-2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Вы --- мышь в небольшом лабиринте. Вы всегда \textbf{начинаете из одной и той же точки.}
+\item
+  Цель --- \textbf{добраться до большого куска сыра в правом нижнем углу} и избежать яда. Ведь кто не любит сыр?
+\item
+  Эпизод заканчивается, если мышь съест яд, \textbf{большой кусок сыра} или сделает больше пяти шагов.
+\item
+  Скорость обучения равна 0.1.
+\item
+  Коэффициент дисконтирования \(\gamma=0.99\).
+\end{itemize}
+
+\CourseFigure{q-ex-1.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 1) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-1.jpg}{[оригинал]}}
+
+Функция вознаграждения устроена так:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{+0:} переход в состояние, где нет сыра.
+\item
+  \textbf{+1:} переход в состояние с маленьким кусочком сыра.
+\item
+  \textbf{+10:} переход в состояние с большим куском сыра.
+\item
+  \textbf{-10:} переход в состояние с ядом и гибель мыши.
+\item
+  \textbf{+0:} если мышь сделала больше пяти шагов.
+\end{itemize}
+
+\CourseFigure{q-ex-2.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 2) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-2.jpg}{[оригинал]}}
+
+Чтобы обучить агента оптимальной политике (то есть действиям вправо, вправо, вниз), \textbf{мы применим алгоритм Q-обучения}.
+
+\subsection{Шаг 1. Инициализируем Q-таблицу}\label{step-1-initialize-the-q-table}
+
+\CourseFigure{Example-1.jpg}{Пример лабиринта \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Example-1.jpg}{[оригинал]}}
+
+Итак, пока \textbf{наша Q-таблица бесполезна}. Необходимо \textbf{обучить Q-функцию алгоритмом Q-обучения.}
+
+Выполним два шага обучения:
+
+Шаг обучения 1:
+
+\subsection{\texorpdfstring{Шаг 2. Выбираем действие с помощью \(\varepsilon\)-жадной стратегии}{Шаг 2. Выбираем действие с помощью epsilon-жадной стратегии}}\label{step-2-choose-an-action-using-the-epsilon-greedy-strategy-1}
+
+Поскольку \(\varepsilon\) велико (= 1.0), я выбираю случайное действие. В данном случае иду вправо.
+
+\CourseFigure{q-ex-3.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 3) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-3.jpg}{[оригинал]}}
+
+\subsection{\texorpdfstring{Шаг 3. Выполняем \(A_t\), получаем \(R_{t+1}\) и \(S_{t+1}\)}{Шаг 3. Выполняем At, получаем R(t+1) и S(t+1)}}\label{step-3-perform-action-at-get-rt1-and-st1}
+
+Двигаясь вправо, я нахожу маленький кусочек сыра, поэтому \(R_{t+1}=1\), и оказываюсь в новом состоянии.
+
+\CourseFigure{q-ex-4.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 4) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-4.jpg}{[оригинал]}}
+
+\subsection{\texorpdfstring{Шаг 4. Обновляем \(Q(S_t,A_t)\)}{Шаг 4. Обновляем Q(St,At)}}\label{step-4-update-qst-at-1}
+
+Теперь мы можем обновить \(Q(S_t,A_t)\) по нашей формуле.
+
+\CourseFigure{q-ex-5.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 5) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-5.jpg}{[оригинал]}}
+
+\CourseFigure{Example-4.jpg}{Пример лабиринта после обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Example-4.jpg}{[оригинал]}}
+
+Шаг обучения 2:
+
+\subsection{\texorpdfstring{Шаг 2. Выбираем действие с помощью \(\varepsilon\)-жадной стратегии}{Шаг 2. Выбираем действие с помощью epsilon-жадной стратегии}}\label{step-2-choose-an-action-using-the-epsilon-greedy-strategy-2}
+
+\textbf{Я снова выбираю случайное действие, поскольку \(\varepsilon=0.99\) всё ещё велико}. (Заметьте, что мы немного уменьшили \(\varepsilon\), ведь по мере обучения хотим исследовать среду всё реже.)
+
+Я выбрал действие «вниз». \textbf{Это неудачное действие, потому что оно приводит к яду.}
+
+\CourseFigure{q-ex-6.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 6) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-6.jpg}{[оригинал]}}
+
+\subsection{\texorpdfstring{Шаг 3. Выполняем \(A_t\), получаем \(R_{t+1}\) и \(S_{t+1}\)}{Шаг 3. Выполняем At, получаем R(t+1) и S(t+1)}}\label{step-3-perform-action-at-get-rt1-and-st1-1}
+
+Поскольку я съел яд, \textbf{получаю \(R_{t+1}=-10\) и погибаю.}
+
+\CourseFigure{q-ex-7.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 7) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-7.jpg}{[оригинал]}}
+
+\subsection{\texorpdfstring{Шаг 4. Обновляем \(Q(S_t,A_t)\)}{Шаг 4. Обновляем Q(St,At)}}\label{step-4-update-qst-at-2}
+
+\CourseFigure{q-ex-8.jpg}{Пример Q-обучения: переход и обновление Q-таблицы (шаг 8) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-8.jpg}{[оригинал]}}
+
+После гибели начинается новый эпизод. Однако уже здесь видно, что \textbf{всего за два шага исследования мой агент стал умнее.}
+
+Продолжая исследовать среду и использовать накопленные знания, обновляя Q-значения по TD-целям, мы получим \textbf{всё более точную Q-таблицу. По окончании обучения она будет приближать оптимальную Q-функцию.}
+
+\section{Повторение: Q-обучение}\label{q-learning-recap}
+
+\emph{Q-обучение} --- это \textbf{алгоритм RL, который:}
+
+\begin{itemize}
+\item
+  Обучает \emph{Q-функцию} --- \textbf{функцию ценности действий}, представленную в памяти \emph{Q-таблицей}, \textbf{содержащей ценности всех пар «состояние--действие»}.
+\item
+  По заданному состоянию и действию \textbf{находит в Q-таблице соответствующее значение}.
+\end{itemize}
+
+\CourseFigure{Q-function-2.jpg}{Поиск ценности пары «состояние--действие» в Q-таблице \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-function-2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\item
+  После обучения \textbf{получается оптимальная Q-функция или, что эквивалентно, оптимальная Q-таблица.}
+\item
+  А если \textbf{у нас есть оптимальная Q-функция}, то
+\end{itemize}
+
+получается и оптимальная политика: для каждого состояния \textbf{нам известно наилучшее действие}.
+
+\CourseFigure{link-value-policy.jpg}{Восстановление оптимальной политики из оптимальной функции ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[оригинал]}}
+
+Но в начале \textbf{Q-таблица бесполезна, поскольку содержит произвольные значения для каждой пары «состояние--действие» (обычно Q-таблица инициализируется нулями)}. По мере исследования среды и обновления таблицы она даёт всё более точные оценки.
+
+\CourseFigure{q-learning.jpeg}{Обучение Q-таблицы: от нулевой инициализации к полезной политике \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/q-learning.jpeg}{[оригинал]}}
+
+Вот псевдокод Q-обучения:
+
+\CourseFigure{Q-learning-2.jpg}{Алгоритм Q-обучения и псевдокод обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-2.jpg}{[оригинал]}}
+
+\section{Практическая часть}\label{hands-on}
+
+\textbf{Официальный практический ноутбук:} \url{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit2/unit2.ipynb}
+
+\textbf{Помощь по курсу:} \url{http://hf.co/join/discord}
+
+Теперь, когда мы изучили алгоритм Q-обучения, реализуем его с нуля и обучим Q-агента в двух средах:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \href{https://gymnasium.farama.org/environments/toy_text/frozen_lake/}{FrozenLake-v1 (без скольжения и со скольжением)}: агенту нужно \textbf{добраться от начального состояния (S) до цели (G)}, перемещаясь только по замёрзшим клеткам (F) и избегая прорубей (H).
+\item
+  \href{https://gymnasium.farama.org/environments/toy_text/taxi/}{Автономное такси} должно \textbf{научиться ориентироваться} в городе, чтобы \textbf{перевозить пассажиров из пункта A в пункт B.}
+\end{enumerate}
+
+\CourseFigure{envs.png}{Демонстрация сред FrozenLake и Taxi \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/envs.gif}{[оригинал]}}
+
+Благодаря \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров} можно сравнивать свои результаты с результатами других участников и делиться лучшими приёмами для улучшения качества агентов. Кто победит в испытании второго модуля?
+
+Чтобы зачесть практическую часть в рамках \href{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}{сертификации}, нужно загрузить обученную модель Taxi в Hub и \textbf{получить результат не ниже 4.5}.
+
+Чтобы узнать результат, откройте \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблицу лидеров} и найдите свою модель; \textbf{результат = mean\_reward - стандартное отклонение вознаграждения}.
+
+Подробнее о сертификации читайте в разделе \url{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}.
+
+Проверить прогресс можно здесь: \url{https://huggingface.co/spaces/ThomasSimonini/Check-my-progress-Deep-RL-Course}.
+
+\textbf{Чтобы начать практику, нажмите кнопку Open In Colab:}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit2/unit2.ipynb}{Открыть исходный ноутбук в Google Colab}
+
+Мы настоятельно \textbf{рекомендуем выполнять практические упражнения в Google Colab}, а не запускать их на личных компьютерах.
+
+Google Colab позволяет \textbf{сосредоточиться на изучении и экспериментах, не отвлекаясь на техническую настройку} окружения.
+
+\section{Модуль 2: Q-обучение для FrozenLake-v1 и Taxi-v3}\label{unit-2-q-learning-with-frozenlake-v1-and-taxi-v3}
+
+\CourseFigure{thumbnail.jpg}{Обложка модуля 2 \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/thumbnail.jpg}{[оригинал]}}
+
+В этом ноутбуке \textbf{вы с нуля напишете своего первого RL-агента}, который обучается играть в FrozenLake с помощью Q-обучения, поделитесь результатом с сообществом и поэкспериментируете с настройками.
+
+Вот пример того, \textbf{чего можно добиться буквально за несколько минут.}
+
+\CourseFigure{envs.png}{Демонстрация сред FrozenLake и Taxi \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/envs.gif}{[оригинал]}}
+
+\subsubsection{Среды:}\label{environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://gymnasium.farama.org/environments/toy_text/frozen_lake/}{FrozenLake-v1}
+\item
+  \href{https://gymnasium.farama.org/environments/toy_text/taxi/}{Taxi-v3}
+\end{itemize}
+
+\subsubsection{Библиотеки для RL:}\label{rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  Python и NumPy
+\item
+  \href{https://gymnasium.farama.org/}{Gymnasium}
+\end{itemize}
+
+Мы постоянно стараемся улучшать учебные материалы, поэтому \textbf{если вы найдёте ошибку в этом ноутбуке}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создайте issue в GitHub-репозитории}.
+
+\subsection{Цели этого ноутбука}\label{objectives-of-this-notebook}
+
+К концу работы с ноутбуком вы сможете:
+
+\begin{itemize}
+\tightlist
+\item
+  Использовать библиотеку сред \textbf{Gymnasium}.
+\item
+  Самостоятельно реализовать агента на основе Q-обучения.
+\item
+  \textbf{Загрузить обученного агента и его код в Hub}, добавив красивую видеозапись работы агента и оценку его качества.
+\end{itemize}
+
+\subsection{Этот ноутбук относится к курсу Deep Reinforcement Learning}\label{this-notebook-is-from-the-deep-reinforcement-learning-course}
+
+\CourseFigure{deep-rl-course-illustration.jpg}{Иллюстрация курса Deep RL \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/deep-rl-course-illustration.jpg}{[оригинал]}}
+
+В этом бесплатном курсе вы:
+
+\begin{itemize}
+\tightlist
+\item
+  Изучите глубокое обучение с подкреплением \textbf{теоретически и практически}.
+\item
+  Научитесь \textbf{использовать известные библиотеки Deep RL}, например Stable-Baselines3, RL Baselines3 Zoo, CleanRL и Sample Factory 2.0.
+\item
+  Обучите \textbf{агентов в разнообразных средах}.
+\end{itemize}
+
+И многое другое: смотрите \url{https://simoninithomas.github.io/deep-rl-course}.
+
+Не забудьте \textbf{\href{http://eepurl.com/ic5ZUD}{зарегистрироваться на курс}} (мы собираем электронные адреса, чтобы \textbf{отправлять вам ссылки при публикации новых модулей, а также новости об испытаниях и обновлениях}).
+
+Лучший способ оставаться на связи --- присоединиться к нашему Discord-серверу, где можно общаться с авторами и сообществом: \url{https://discord.gg/ydHrjt3WP5}.
+
+\subsection{Предварительные требования}\label{prerequisites}
+
+Перед началом работы с ноутбуком необходимо:
+
+\textbf{Изучить Q-обучение, прочитав \href{https://huggingface.co/deep-rl-course/unit2/introduction}{теорию модуля 2}}.
+
+\subsection{Краткое повторение Q-обучения}\label{a-small-recap-of-q-learning}
+
+\emph{Q-обучение} --- это \textbf{алгоритм RL, который:}
+
+\begin{itemize}
+\item
+  Обучает \emph{Q-функцию} --- \textbf{функцию ценности действий}, которая хранится в памяти в виде \emph{Q-таблицы}, \textbf{содержащей значения всех пар «состояние--действие»}.
+\item
+  По состоянию и действию \textbf{находит в Q-таблице соответствующее значение}.
+\end{itemize}
+
+\CourseFigure{Q-function-2.jpg}{Поиск ценности пары «состояние--действие» в Q-таблице \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-function-2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\item
+  После обучения \textbf{мы получаем оптимальную Q-функцию, а значит, оптимальную Q-таблицу}.
+\item
+  Если \textbf{Q-функция оптимальна}, то
+\end{itemize}
+
+оптимальна и политика, поскольку \textbf{мы знаем наилучшее действие для каждого состояния}.
+
+\CourseFigure{link-value-policy.jpg}{Восстановление оптимальной политики из оптимальной функции ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[оригинал]}}
+
+В начале \textbf{Q-таблица бесполезна, поскольку содержит произвольные значения для всех пар «состояние--действие» (обычно её инициализируют нулями)}. Но по мере исследования среды и обновления Q-таблицы оценки становятся всё точнее.
+
+\CourseFigure{q-learning.jpeg}{Обучение Q-таблицы: от нулевой инициализации к полезной политике \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/q-learning.jpeg}{[оригинал]}}
+
+Вот псевдокод Q-обучения:
+
+\CourseFigure{Q-learning-2.jpg}{Алгоритм Q-обучения и псевдокод обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-2.jpg}{[оригинал]}}
+
+\section{Давайте напишем наш первый алгоритм обучения с подкреплением}\label{lets-code-our-first-reinforcement-learning-algorithm}
+
+Для зачёта этой практики в рамках \href{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}{сертификации} нужно загрузить обученную модель Taxi в Hub и \textbf{получить результат не ниже 4.5}.
+
+Чтобы узнать результат, откройте \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблицу лидеров} и найдите свою модель; \textbf{результат = mean\_reward - стандартное отклонение вознаграждения}.
+
+Подробнее о сертификации читайте здесь: \url{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}.
+
+\subsection{Установка зависимостей и создание виртуального экрана}\label{install-dependencies-and-create-a-virtual-display}
+
+В ноутбуке нам потребуется создать видеозапись работы агента. Для этого в Colab \textbf{необходимо создать виртуальный экран для отрисовки среды} (и, соответственно, записи кадров).
+
+Следующая ячейка устанавливает библиотеки, создаёт и запускает виртуальный экран.
+
+Мы установим несколько пакетов:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!gymnasium!}: содержит среды FrozenLake-v1 и Taxi-v3.
+\item
+  \passthrough{\lstinline!pygame!}: используется для интерфейса FrozenLake-v1 и Taxi-v3.
+\item
+  \passthrough{\lstinline!numpy!}: используется для работы с Q-таблицей.
+\end{itemize}
+
+Hugging Face Hub --- это централизованная платформа, на которой любой пользователь может публиковать и изучать модели и датасеты. Поддерживаются версионирование, метрики, визуализации и другие средства для совместной работы.
+
+Здесь можно посмотреть все доступные модели Deep RL, использующие Q-Learning: \url{https://huggingface.co/models?other=q-learning}.
+
+\begin{lstlisting}[language=bash]
+pip install -r https://raw.githubusercontent.com/huggingface/deep-rl-class/main/notebooks/unit2/requirements-unit2.txt
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash]
+sudo apt-get update
+sudo apt-get install -y python3-opengl
+apt install ffmpeg xvfb
+pip3 install pyvirtualdisplay
+\end{lstlisting}
+
+Чтобы гарантировать использование вновь установленных библиотек, \textbf{иногда требуется перезапустить среду выполнения ноутбука}. Следующая ячейка намеренно \textbf{вызовет аварийное завершение среды; после этого нужно подключиться заново и продолжить выполнение с этого места}. Благодаря этому \textbf{мы сможем использовать виртуальный экран}.
+
+\begin{lstlisting}[language=Python]
+import os
+
+os.kill(os.getpid(), 9)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsection{Импорт библиотек}\label{import-the-packages}
+
+Помимо установленных библиотек, используем:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!random!}: для генерации случайных чисел (нужны для \(\varepsilon\)-жадной политики).
+\item
+  \passthrough{\lstinline!imageio!}: для создания видеозаписи работы агента.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+import numpy as np
+import gymnasium as gym
+import random
+import imageio
+import os
+import tqdm
+
+import pickle5 as pickle
+from tqdm.notebook import tqdm
+\end{lstlisting}
+
+Теперь всё готово к написанию алгоритма Q-обучения.
+
+\section{Часть 1. FrozenLake без скольжения}\label{part-1-frozen-lake-non-slippery-version}
+
+\subsection{Создание и изучение среды FrozenLake}\label{create-and-understand-frozenlake-environment}
+
+При начале работы с новой средой полезно сначала изучить её документацию.
+
+\url{https://gymnasium.farama.org/environments/toy_text/frozen_lake/}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Мы обучим Q-агента \textbf{переходить из начального состояния (S) в целевое (G), передвигаясь по замёрзшим клеткам (F) и избегая прорубей (H)}.
+
+Доступно два размера среды:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!map_name="4x4"!}: сетка 4 на 4.
+\item
+  \passthrough{\lstinline!map_name="8x8"!}: сетка 8 на 8.
+\end{itemize}
+
+У среды есть два режима:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!is_slippery=False!}: агент всегда движется \textbf{в выбранном направлении}, поскольку лёд не скользкий (детерминированный режим).
+\item
+  \passthrough{\lstinline!is_slippery=True!}: из-за скольжения агент \textbf{не всегда перемещается в заданном направлении} (стохастический режим).
+\end{itemize}
+
+Пока выберем самый простой вариант: карту 4 на 4 без скольжения. Дополнительно зададим параметр \passthrough{\lstinline!render_mode!}, определяющий способ визуализации среды. Поскольку \textbf{в конце нам нужно записать видео, следует указать render\_mode = rgb\_array}.
+
+Как \href{https://gymnasium.farama.org/api/env/\#gymnasium.Env.render}{сказано в документации}, режим ``rgb\_array'' возвращает один кадр текущего состояния среды. Кадр представлен массивом np.ndarray формы (x, y, 3) с RGB-значениями пикселей изображения размером x на y.
+
+\begin{lstlisting}[language=Python]
+# Create the FrozenLake-v1 environment using 4x4 map and non-slippery version and render_mode="rgb_array"
+env = gym.make()  # TODO use the correct parameters
+\end{lstlisting}
+
+\subsubsection{Решение}\label{solution}
+
+\begin{lstlisting}[language=Python]
+env = gym.make("FrozenLake-v1", map_name="4x4", is_slippery=False, render_mode="rgb_array")
+\end{lstlisting}
+
+Можно создать собственную сетку следующим образом:
+
+\begin{lstlisting}[language=Python]
+desc=["SFFF", "FHFH", "FFFH", "HFFG"]
+gym.make('FrozenLake-v1', desc=desc, is_slippery=True)
+\end{lstlisting}
+
+Но пока будем использовать среду по умолчанию.
+
+\subsubsection{Посмотрим, как выглядит среда:}\label{lets-see-what-the-environment-looks-like}
+
+\begin{lstlisting}[language=Python]
+# We create our environment with gym.make("<name_of_the_environment>")- `is_slippery=False`: The agent always moves in the intended direction due to the non-slippery nature of the frozen lake (deterministic).
+print("_____OBSERVATION SPACE_____ \n")
+print("Observation Space", env.observation_space)
+print("Sample observation", env.observation_space.sample())  # Get a random observation
+\end{lstlisting}
+
+По выводу \passthrough{\lstinline!Observation Space Shape Discrete(16)!} видно, что наблюдение --- целое число, представляющее \textbf{текущую позицию агента как current\_row * ncols + current\_col (индексы строк и столбцов начинаются с нуля)}.
+
+Например, позиция цели на карте 4 на 4 рассчитывается как \(3*4+3=15\). Число возможных наблюдений зависит от размера карты. \textbf{Для сетки 4 на 4 существует 16 возможных наблюдений.}
+
+Вот как выглядит состояние 0:
+
+\CourseFigure{frozenlake.png}{Сетка FrozenLake, действия и типы клеток \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/frozenlake.png}{[оригинал]}}
+
+\begin{lstlisting}[language=Python]
+print("\n _____ACTION SPACE_____ \n")
+print("Action Space Shape", env.action_space.n)
+print("Action Space Sample", env.action_space.sample())  # Take a random action
+\end{lstlisting}
+
+Пространство действий (набор доступных действий) дискретно и содержит четыре варианта:
+
+\begin{itemize}
+\tightlist
+\item
+  0: ДВИЖЕНИЕ ВЛЕВО
+\item
+  1: ДВИЖЕНИЕ ВНИЗ
+\item
+  2: ДВИЖЕНИЕ ВПРАВО
+\item
+  3: GO UP
+\end{itemize}
+
+Функция вознаграждения:
+
+\begin{itemize}
+\tightlist
+\item
+  Достижение цели: +1.
+\item
+  Попадание в прорубь: 0.
+\item
+  Попадание на замёрзшую клетку: 0.
+\end{itemize}
+
+\subsection{Создание и инициализация Q-таблицы}\label{create-and-initialize-the-q-table}
+
+(Шаг 1 псевдокода.)
+
+\CourseFigure{Q-learning-2.jpg}{Алгоритм Q-обучения и псевдокод обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-2.jpg}{[оригинал]}}
+
+Пора инициализировать Q-таблицу! Чтобы определить число строк (состояний) и столбцов (действий), нужно знать пространства наблюдений и действий. Их размеры мы уже выяснили, но лучше получать их программно, чтобы алгоритм работал с разными средами. В Gym для этого существуют \passthrough{\lstinline!env.action_space.n!} и \passthrough{\lstinline!env.observation_space.n!}.
+
+\begin{lstlisting}[language=Python]
+state_space =
+print("There are ", state_space, " possible states")
+
+action_space =
+print("There are ", action_space, " possible actions")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+# Let's create our Qtable of size (state_space, action_space) and initialized each values at 0 using np.zeros. np.zeros needs a tuple (a,b)
+def initialize_q_table(state_space, action_space):
+  Qtable =
+  return Qtable
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+Qtable_frozenlake = initialize_q_table(state_space, action_space)
+\end{lstlisting}
+
+\subsubsection{Решение}\label{solution-1}
+
+\begin{lstlisting}[language=Python]
+state_space = env.observation_space.n
+print("There are ", state_space, " possible states")
+
+action_space = env.action_space.n
+print("There are ", action_space, " possible actions")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+# Let's create our Qtable of size (state_space, action_space) and initialized each values at 0 using np.zeros
+def initialize_q_table(state_space, action_space):
+    Qtable = np.zeros((state_space, action_space))
+    return Qtable
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+Qtable_frozenlake = initialize_q_table(state_space, action_space)
+\end{lstlisting}
+
+\subsection{Определение жадной политики}\label{define-the-greedy-policy}
+
+Напомним, что Q-обучение --- \textbf{off-policy} алгоритм, поэтому мы используем \textbf{разные политики для выбора действий и обновления функции ценности}.
+
+\begin{itemize}
+\tightlist
+\item
+  \(\varepsilon\)-жадная политика (политика поведения).
+\item
+  Жадная политика (политика обновления).
+\end{itemize}
+
+Жадная политика также станет итоговой политикой после завершения обучения Q-агента. Она выбирает действие на основе Q-таблицы.
+
+\CourseFigure{off-on-4.jpg}{Сравнение методов off-policy и on-policy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/off-on-4.jpg}{[оригинал]}}
+
+\begin{lstlisting}[language=Python]
+def greedy_policy(Qtable, state):
+  # Exploitation: take the action with the highest state, action value
+  action =
+
+  return action
+\end{lstlisting}
+
+\paragraph{Решение}\label{solution-2}
+
+\begin{lstlisting}[language=Python]
+def greedy_policy(Qtable, state):
+    # Exploitation: take the action with the highest state, action value
+    action = np.argmax(Qtable[state][:])
+
+    return action
+\end{lstlisting}
+
+\subsection{\texorpdfstring{Определение \(\varepsilon\)-жадной политики}{Определение epsilon-жадной политики}}\label{define-the-epsilon-greedy-policy}
+
+\(\varepsilon\)-жадная политика применяется при обучении и обеспечивает компромисс между исследованием среды и использованием уже известных знаний.
+
+Идея \(\varepsilon\)-жадной стратегии:
+
+\begin{itemize}
+\item
+  С \emph{вероятностью \(1-\varepsilon\):} \textbf{используем знания (exploitation)} --- агент выбирает действие с максимальной ценностью пары «состояние--действие».
+\item
+  С \emph{вероятностью \(\varepsilon\):} \textbf{исследуем среду (exploration)} --- выбираем случайное действие.
+\end{itemize}
+
+По мере обучения мы постепенно \textbf{уменьшаем \(\varepsilon\), поскольку исследования среды требуется всё меньше, а использования уже полученных знаний --- всё больше.}
+
+\CourseFigure{Q-learning-4.jpg}{\(\varepsilon\)-жадная стратегия: исследование и использование знаний \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-4.jpg}{[оригинал]}}
+
+\begin{lstlisting}[language=Python]
+def epsilon_greedy_policy(Qtable, state, epsilon):
+  # Randomly generate a number between 0 and 1
+  random_num =
+  # if random_num > greater than epsilon --> exploitation
+  if random_num > epsilon:
+    # Take the action with the highest value given a state
+    # np.argmax can be useful here
+    action =
+  # else --> exploration
+  else:
+    action = # Take a random action
+
+  return action
+\end{lstlisting}
+
+\paragraph{Решение}\label{solution-3}
+
+\begin{lstlisting}[language=Python]
+def epsilon_greedy_policy(Qtable, state, epsilon):
+    # Randomly generate a number between 0 and 1
+    random_num = random.uniform(0, 1)
+    # if random_num > greater than epsilon --> exploitation
+    if random_num > epsilon:
+        # Take the action with the highest value given a state
+        # np.argmax can be useful here
+        action = greedy_policy(Qtable, state)
+    # else --> exploration
+    else:
+        action = env.action_space.sample()
+
+    return action
+\end{lstlisting}
+
+\subsection{Определение гиперпараметров}\label{define-the-hyperparameters}
+
+Гиперпараметры, связанные с исследованием среды, относятся к наиболее важным.
+
+\begin{itemize}
+\tightlist
+\item
+  Нужно удостовериться, что агент \textbf{достаточно хорошо исследует пространство состояний}, чтобы получить качественную оценку ценности. Для этого \(\varepsilon\) следует уменьшать постепенно.
+\item
+  Если уменьшать \(\varepsilon\) слишком быстро (слишком большой decay\_rate), \textbf{возникает риск, что обучение агента зайдёт в тупик}: он не исследует достаточную часть пространства состояний и потому не сможет решить задачу.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+# Training parameters
+n_training_episodes = 10000  # Total training episodes
+learning_rate = 0.7  # Learning rate
+
+# Evaluation parameters
+n_eval_episodes = 100  # Total number of test episodes
+
+# Environment parameters
+env_id = "FrozenLake-v1"  # Name of the environment
+max_steps = 99  # Max steps per episode
+gamma = 0.95  # Discounting rate
+eval_seed = []  # The evaluation seed of the environment
+
+# Exploration parameters
+max_epsilon = 1.0  # Exploration probability at start
+min_epsilon = 0.05  # Minimum exploration probability
+decay_rate = 0.0005  # Exponential decay rate for exploration prob
+\end{lstlisting}
+
+\subsection{Создание цикла обучения}\label{create-the-training-loop-method}
+
+\CourseFigure{Q-learning-2.jpg}{Алгоритм Q-обучения и псевдокод обновления \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-2.jpg}{[оригинал]}}
+
+Цикл обучения устроен следующим образом:
+
+\begin{lstlisting}
+For episode in the total of training episodes:
+
+Reduce epsilon (since we need less and less exploration)
+Reset the environment
+
+  For step in max timesteps:
+    Choose the action At using epsilon greedy policy
+    Take the action (a) and observe the outcome state(s') and reward (r)
+    Update the Q-value Q(s,a) using Bellman equation Q(s,a) + lr [R(s,a) + gamma * max Q(s',a') - Q(s,a)]
+    If done, finish the episode
+    Our next state is the new state
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+def train(n_training_episodes, min_epsilon, max_epsilon, decay_rate, env, max_steps, Qtable):
+  for episode in tqdm(range(n_training_episodes)):
+    # Reduce epsilon (because we need less and less exploration)
+    epsilon = min_epsilon + (max_epsilon - min_epsilon)*np.exp(-decay_rate*episode)
+    # Reset the environment
+    state, info = env.reset()
+    step = 0
+    terminated = False
+    truncated = False
+
+    # repeat
+    for step in range(max_steps):
+      # Choose the action At using epsilon greedy policy
+      action =
+
+      # Take action At and observe Rt+1 and St+1
+      # Take the action (a) and observe the outcome state(s') and reward (r)
+      new_state, reward, terminated, truncated, info =
+
+      # Update Q(s,a):= Q(s,a) + lr [R(s,a) + gamma * max Q(s',a') - Q(s,a)]
+      Qtable[state][action] =
+
+      # If terminated or truncated finish the episode
+      if terminated or truncated:
+        break
+
+      # Our next state is the new state
+      state = new_state
+  return Qtable
+\end{lstlisting}
+
+\paragraph{Решение}\label{solution-4}
+
+\begin{lstlisting}[language=Python]
+def train(n_training_episodes, min_epsilon, max_epsilon, decay_rate, env, max_steps, Qtable):
+    for episode in tqdm(range(n_training_episodes)):
+        # Reduce epsilon (because we need less and less exploration)
+        epsilon = min_epsilon + (max_epsilon - min_epsilon) * np.exp(-decay_rate * episode)
+        # Reset the environment
+        state, info = env.reset()
+        step = 0
+        terminated = False
+        truncated = False
+
+        # repeat
+        for step in range(max_steps):
+            # Choose the action At using epsilon greedy policy
+            action = epsilon_greedy_policy(Qtable, state, epsilon)
+
+            # Take action At and observe Rt+1 and St+1
+            # Take the action (a) and observe the outcome state(s') and reward (r)
+            new_state, reward, terminated, truncated, info = env.step(action)
+
+            # Update Q(s,a):= Q(s,a) + lr [R(s,a) + gamma * max Q(s',a') - Q(s,a)]
+            Qtable[state][action] = Qtable[state][action] + learning_rate * (
+                reward + gamma * np.max(Qtable[new_state]) - Qtable[state][action]
+            )
+
+            # If terminated or truncated finish the episode
+            if terminated or truncated:
+                break
+
+            # Our next state is the new state
+            state = new_state
+    return Qtable
+\end{lstlisting}
+
+\subsection{Обучение Q-агента}\label{train-the-q-learning-agent}
+
+\begin{lstlisting}[language=Python]
+Qtable_frozenlake = train(n_training_episodes, min_epsilon, max_epsilon, decay_rate, env, max_steps, Qtable_frozenlake)
+\end{lstlisting}
+
+\subsection{Посмотрим на получившуюся Q-таблицу}\label{lets-see-what-our-q-learning-table-looks-like-now}
+
+\begin{lstlisting}[language=Python]
+Qtable_frozenlake
+\end{lstlisting}
+
+\subsection{Метод оценки качества}\label{the-evaluation-method}
+
+\begin{itemize}
+\tightlist
+\item
+  Мы определили метод оценки, который будем использовать для проверки нашего Q-агента.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+def evaluate_agent(env, max_steps, n_eval_episodes, Q, seed):
+    """
+    Evaluate the agent for ``n_eval_episodes`` episodes and returns average reward and std of reward.
+    :param env: The evaluation environment
+    :param n_eval_episodes: Number of episode to evaluate the agent
+    :param Q: The Q-table
+    :param seed: The evaluation seed array (for taxi-v3)
+    """
+    episode_rewards = []
+    for episode in tqdm(range(n_eval_episodes)):
+        if seed:
+            state, info = env.reset(seed=seed[episode])
+        else:
+            state, info = env.reset()
+        step = 0
+        truncated = False
+        terminated = False
+        total_rewards_ep = 0
+
+        for step in range(max_steps):
+            # Take the action (index) that have the maximum expected future reward given that state
+            action = greedy_policy(Q, state)
+            new_state, reward, terminated, truncated, info = env.step(action)
+            total_rewards_ep += reward
+
+            if terminated or truncated:
+                break
+            state = new_state
+        episode_rewards.append(total_rewards_ep)
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+
+    return mean_reward, std_reward
+\end{lstlisting}
+
+\subsection{Оценка качества Q-агента}\label{evaluate-our-q-learning-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  Обычно среднее вознаграждение должно быть равно 1.0.
+\item
+  \textbf{Эта среда относительно простая}, потому что пространство состояний очень маленькое (16). В качестве усложнения попробуйте \href{https://www.gymlibrary.dev/environments/toy_text/frozen_lake/}{версию со скольжением}: она вносит стохастичность, делая среду сложнее.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+# Evaluate our Agent
+mean_reward, std_reward = evaluate_agent(env, max_steps, n_eval_episodes, Qtable_frozenlake, eval_seed)
+print(f"Mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
+\end{lstlisting}
+
+\subsection{Публикация обученной модели в Hub}\label{publish-our-trained-model-to-the-hub}
+
+Теперь, когда обучение дало хорошие результаты, \textbf{мы можем опубликовать обученную модель в Hub одной строкой кода}.
+
+Вот пример карточки модели (Model Card):
+
+\CourseFigure{modelcard.png}{Карточка модели на Hugging Face Hub \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/modelcard.png}{[оригинал]}}
+
+Внутри Hub использует репозитории на основе Git (ничего страшного, если вы пока не знакомы с Git). Это означает, что по мере экспериментов и улучшения агента модель можно обновлять и публиковать новые версии.
+
+\paragraph{Не изменяйте этот код}\label{do-not-modify-this-code}
+
+\begin{lstlisting}[language=Python]
+from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub.repocard import metadata_eval_result, metadata_save
+
+from pathlib import Path
+import datetime
+import json
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+def record_video(env, Qtable, out_directory, fps=1):
+    """
+    Generate a replay video of the agent
+    :param env
+    :param Qtable: Qtable of our agent
+    :param out_directory
+    :param fps: how many frame per seconds (with taxi-v3 and frozenlake-v1 we use 1)
+    """
+    images = []
+    terminated = False
+    truncated = False
+    state, info = env.reset(seed=random.randint(0, 500))
+    img = env.render()
+    images.append(img)
+    while not terminated or truncated:
+        # Take the action (index) that have the maximum expected future reward given that state
+        action = np.argmax(Qtable[state][:])
+        state, reward, terminated, truncated, info = env.step(
+            action
+        )  # We directly put next_state = state for recording logic
+        img = env.render()
+        images.append(img)
+    imageio.mimsave(out_directory, [np.array(img) for i, img in enumerate(images)], fps=fps)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+def push_to_hub(repo_id, model, env, video_fps=1, local_repo_path="hub"):
+    """
+    Evaluate, Generate a video and Upload a model to Hugging Face Hub.
+    This method does the complete pipeline:
+    - It evaluates the model
+    - It generates the model card
+    - It generates a replay video of the agent
+    - It pushes everything to the Hub
+
+    :param repo_id: repo_id: id of the model repository from the Hugging Face Hub
+    :param env
+    :param video_fps: how many frame per seconds to record our video replay
+    (with taxi-v3 and frozenlake-v1 we use 1)
+    :param local_repo_path: where the local repository is
+    """
+    _, repo_name = repo_id.split("/")
+
+    eval_env = env
+    api = HfApi()
+
+    # Step 1: Create the repo
+    repo_url = api.create_repo(
+        repo_id=repo_id,
+        exist_ok=True,
+    )
+
+    # Step 2: Download files
+    repo_local_path = Path(snapshot_download(repo_id=repo_id))
+
+    # Step 3: Save the model
+    if env.spec.kwargs.get("map_name"):
+        model["map_name"] = env.spec.kwargs.get("map_name")
+        if env.spec.kwargs.get("is_slippery", "") == False:
+            model["slippery"] = False
+
+    # Pickle the model
+    with open((repo_local_path) / "q-learning.pkl", "wb") as f:
+        pickle.dump(model, f)
+
+    # Step 4: Evaluate the model and build JSON with evaluation metrics
+    mean_reward, std_reward = evaluate_agent(
+        eval_env, model["max_steps"], model["n_eval_episodes"], model["qtable"], model["eval_seed"]
+    )
+
+    evaluate_data = {
+        "env_id": model["env_id"],
+        "mean_reward": mean_reward,
+        "n_eval_episodes": model["n_eval_episodes"],
+        "eval_datetime": datetime.datetime.now().isoformat(),
+    }
+
+    # Write a JSON file called "results.json" that will contain the
+    # evaluation results
+    with open(repo_local_path / "results.json", "w") as outfile:
+        json.dump(evaluate_data, outfile)
+
+    # Step 5: Create the model card
+    env_name = model["env_id"]
+    if env.spec.kwargs.get("map_name"):
+        env_name += "-" + env.spec.kwargs.get("map_name")
+
+    if env.spec.kwargs.get("is_slippery", "") == False:
+        env_name += "-" + "no_slippery"
+
+    metadata = {}
+    metadata["tags"] = [env_name, "q-learning", "reinforcement-learning", "custom-implementation"]
+
+    # Add metrics
+    eval = metadata_eval_result(
+        model_pretty_name=repo_name,
+        task_pretty_name="reinforcement-learning",
+        task_id="reinforcement-learning",
+        metrics_pretty_name="mean_reward",
+        metrics_id="mean_reward",
+        metrics_value=f"{mean_reward:.2f} +/- {std_reward:.2f}",
+        dataset_pretty_name=env_name,
+        dataset_id=env_name,
+    )
+
+    # Merges both dictionaries
+    metadata = {**metadata, **eval}
+
+    model_card = f"""
+  # **Q-Learning** Agent playing1 **{env_id}**
+  This is a trained model of a **Q-Learning** agent playing **{env_id}** .
+
+  ## Usage
+
+  model = load_from_hub(repo_id="{repo_id}", filename="q-learning.pkl")
+
+  # Don't forget to check if you need to add additional attributes (is_slippery=False etc)
+  env = gym.make(model["env_id"])
+  """
+
+    evaluate_agent(env, model["max_steps"], model["n_eval_episodes"], model["qtable"], model["eval_seed"])
+
+    readme_path = repo_local_path / "README.md"
+    readme = ""
+    print(readme_path.exists())
+    if readme_path.exists():
+        with readme_path.open("r", encoding="utf8") as f:
+            readme = f.read()
+    else:
+        readme = model_card
+
+    with readme_path.open("w", encoding="utf-8") as f:
+        f.write(readme)
+
+    # Save our metrics to Readme metadata
+    metadata_save(readme_path, metadata)
+
+    # Step 6: Record a video
+    video_path = repo_local_path / "replay.mp4"
+    record_video(env, model["qtable"], video_path, video_fps)
+
+    # Step 7. Push everything to the Hub
+    api.upload_folder(
+        repo_id=repo_id,
+        folder_path=repo_local_path,
+        path_in_repo=".",
+    )
+
+    print("Your model is pushed to the Hub. You can view your model here: ", repo_url)
+\end{lstlisting}
+
+\subsubsection{.}\label{section}
+
+С помощью \passthrough{\lstinline!push_to_hub!} \textbf{вы оцениваете агента, записываете видео его работы, генерируете карточку модели и публикуете его в Hub}.
+
+Это позволяет:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Продемонстрировать свою работу}.
+\item
+  \textbf{Увидеть, как играет агент}.
+\item
+  \textbf{Поделиться агентом с сообществом}, чтобы им могли пользоваться другие.
+\item
+  \textbf{Посмотреть в таблице лидеров, насколько хорошо ваш агент работает по сравнению с агентами других участников}: \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}.
+\end{itemize}
+
+Для публикации модели в сообществе нужно выполнить ещё три шага:
+
+1. Если вы ещё не зарегистрированы, создайте аккаунт Hugging Face: \url{https://huggingface.co/join}.
+
+2. Войдите в аккаунт и сохраните токен аутентификации, полученный на сайте Hugging Face.
+
+\begin{itemize}
+\tightlist
+\item
+  Создайте новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правом записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена доступа к Hugging Face Hub \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{lstlisting}[language=Python]
+from huggingface_hub import notebook_login
+
+notebook_login()
+\end{lstlisting}
+
+Если вы работаете не в Google Colab или Jupyter Notebook, используйте вместо этого команду \passthrough{\lstinline!huggingface-cli login!} (или \passthrough{\lstinline!login!}).
+
+3. Теперь можно загрузить обученного агента в Hub с помощью функции \passthrough{\lstinline!push_to_hub()!}.
+
+\begin{itemize}
+\tightlist
+\item
+  Создадим \textbf{словарь модели, содержащий гиперпараметры и Q\_table}.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+model = {
+    "env_id": env_id,
+    "max_steps": max_steps,
+    "n_training_episodes": n_training_episodes,
+    "n_eval_episodes": n_eval_episodes,
+    "eval_seed": eval_seed,
+    "learning_rate": learning_rate,
+    "gamma": gamma,
+    "max_epsilon": max_epsilon,
+    "min_epsilon": min_epsilon,
+    "decay_rate": decay_rate,
+    "qtable": Qtable_frozenlake,
+}
+\end{lstlisting}
+
+Заполним аргументы функции \passthrough{\lstinline!push_to_hub!}:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!repo_id!}: имя репозитория Hugging Face Hub, который будет создан или обновлён.
+\end{itemize}
+
+(\texttt{repo\_id = \{username\}/\{repo\_name\}}). Хорошее имя репозитория: \texttt{\{username\}/q-\{env\_id\}}.
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!model!}: наш словарь модели с гиперпараметрами и Q-таблицей.
+\item
+  \passthrough{\lstinline!env!}: среда.
+\item
+  \passthrough{\lstinline!commit_message!}: сообщение коммита.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+model
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+username = ""  # FILL THIS
+repo_name = "q-FrozenLake-v1-4x4-noSlippery"
+push_to_hub(repo_id=f"{username}/{repo_name}", model=model, env=env)
+\end{lstlisting}
+
+Поздравляем! Вы только что самостоятельно реализовали, обучили и загрузили своего первого RL-агента. FrozenLake-v1 без скольжения --- очень простая среда; теперь попробуем более сложную.
+
+\section{Часть 2. Taxi-v3}\label{part-2-taxi-v3}
+
+\subsection{Создание и изучение среды Taxi-v3}\label{create-and-understand-taxi-v3}
+
+Перед использованием новой среды полезно изучить её документацию.
+
+\url{https://gymnasium.farama.org/environments/toy_text/taxi/}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+В \passthrough{\lstinline!Taxi-v3!} есть четыре специально обозначенных места на карте: R (красное), G (зелёное), Y (жёлтое) и B (синее).
+
+В начале эпизода \textbf{такси находится в случайной клетке}, а пассажир --- в случайной точке. Такси едет к пассажиру, \textbf{забирает его}, доставляет к пункту назначения (ещё одной из четырёх обозначенных точек) и \textbf{высаживает}. После высадки пассажира эпизод заканчивается.
+
+\CourseFigure{taxi.png}{Среда Taxi для Q-обучения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/taxi.png}{[оригинал]}}
+
+\begin{lstlisting}[language=Python]
+env = gym.make("Taxi-v3", render_mode="rgb_array")
+\end{lstlisting}
+
+Всего существует \textbf{500 дискретных состояний: 25 положений такси, 5 возможных положений пассажира} (включая нахождение в такси) и \textbf{4 пункта назначения}.
+
+\begin{lstlisting}[language=Python]
+state_space = env.observation_space.n
+print("There are ", state_space, " possible states")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+action_space = env.action_space.n
+print("There are ", action_space, " possible actions")
+\end{lstlisting}
+
+Пространство действий (множество возможных действий агента) дискретно и содержит \textbf{6 действий}:
+
+\begin{itemize}
+\tightlist
+\item
+  0: движение на юг
+\item
+  1: движение на север
+\item
+  2: движение на восток
+\item
+  3: движение на запад
+\item
+  4: посадка пассажира
+\item
+  5: высадка пассажира
+\end{itemize}
+
+Функция вознаграждения:
+
+\begin{itemize}
+\tightlist
+\item
+  -1 за каждый шаг, если не сработало другое вознаграждение.
+\item
+  +20 за доставку пассажира.
+\item
+  -10 за недопустимое действие «посадка» или «высадка».
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+# Create our Q table with state_size rows and action_size columns (500x6)
+Qtable_taxi = initialize_q_table(state_space, action_space)
+print(Qtable_taxi)
+print("Q-table shape: ", Qtable_taxi.shape)
+\end{lstlisting}
+
+\subsection{Определение гиперпараметров}\label{define-the-hyperparameters-1}
+
+НЕ ИЗМЕНЯЙТЕ EVAL\_SEED: массив eval\_seed \textbf{позволяет оценивать агентов всех участников при одинаковых исходных положениях такси}.
+
+\begin{lstlisting}[language=Python]
+# Training parameters
+n_training_episodes = 25000  # Total training episodes
+learning_rate = 0.7  # Learning rate
+
+# Evaluation parameters
+n_eval_episodes = 100  # Total number of test episodes
+
+# DO NOT MODIFY EVAL_SEED
+eval_seed = [
+    16,
+    54,
+    165,
+    177,
+    191,
+    191,
+    120,
+    80,
+    149,
+    178,
+    48,
+    38,
+    6,
+    125,
+    174,
+    73,
+    50,
+    172,
+    100,
+    148,
+    146,
+    6,
+    25,
+    40,
+    68,
+    148,
+    49,
+    167,
+    9,
+    97,
+    164,
+    176,
+    61,
+    7,
+    54,
+    55,
+    161,
+    131,
+    184,
+    51,
+    170,
+    12,
+    120,
+    113,
+    95,
+    126,
+    51,
+    98,
+    36,
+    135,
+    54,
+    82,
+    45,
+    95,
+    89,
+    59,
+    95,
+    124,
+    9,
+    113,
+    58,
+    85,
+    51,
+    134,
+    121,
+    169,
+    105,
+    21,
+    30,
+    11,
+    50,
+    65,
+    12,
+    43,
+    82,
+    145,
+    152,
+    97,
+    106,
+    55,
+    31,
+    85,
+    38,
+    112,
+    102,
+    168,
+    123,
+    97,
+    21,
+    83,
+    158,
+    26,
+    80,
+    63,
+    5,
+    81,
+    32,
+    11,
+    28,
+    148,
+]  # Evaluation seed, this ensures that all classmates agents are trained on the same taxi starting position
+# Each seed has a specific starting state
+# Environment parameters
+env_id = "Taxi-v3"  # Name of the environment
+max_steps = 99  # Max steps per episode
+gamma = 0.95  # Discounting rate
+
+# Exploration parameters
+max_epsilon = 1.0  # Exploration probability at start
+min_epsilon = 0.05  # Minimum exploration probability
+decay_rate = 0.005  # Exponential decay rate for exploration prob
+\end{lstlisting}
+
+\subsection{Обучение нашего Q-агента}\label{train-our-q-learning-agent}
+
+\begin{lstlisting}[language=Python]
+Qtable_taxi = train(n_training_episodes, min_epsilon, max_epsilon, decay_rate, env, max_steps, Qtable_taxi)
+Qtable_taxi
+\end{lstlisting}
+
+\subsection{Создание словаря модели и публикация обученной модели в Hub}\label{create-a-model-dictionary-and-publish-our-trained-model-to-the-hub}
+
+\begin{itemize}
+\tightlist
+\item
+  Создадим словарь модели, содержащий все гиперпараметры обучения для воспроизводимости результатов, а также Q-таблицу.
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+model = {
+    "env_id": env_id,
+    "max_steps": max_steps,
+    "n_training_episodes": n_training_episodes,
+    "n_eval_episodes": n_eval_episodes,
+    "eval_seed": eval_seed,
+    "learning_rate": learning_rate,
+    "gamma": gamma,
+    "max_epsilon": max_epsilon,
+    "min_epsilon": min_epsilon,
+    "decay_rate": decay_rate,
+    "qtable": Qtable_taxi,
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+username = ""  # FILL THIS
+repo_name = ""  # FILL THIS
+push_to_hub(repo_id=f"{username}/{repo_name}", model=model, env=env)
+\end{lstlisting}
+
+Теперь, когда модель опубликована в Hub, можно сравнить результаты своего агента Taxi-v3 с результатами других участников в \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров}.
+
+\CourseFigure{taxi-leaderboard.png}{Таблица лидеров для среды Taxi \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/taxi-leaderboard.png}{[оригинал]}}
+
+\section{Часть 3. Загрузка модели из Hub}\label{part-3-load-from-hub}
+
+Одна из замечательных возможностей Hugging Face Hub --- простая загрузка мощных моделей, опубликованных сообществом.
+
+Загрузить сохранённую модель из Hub очень просто:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Откройте \url{https://huggingface.co/models?other=q-learning}, чтобы увидеть список сохранённых моделей Q-обучения.
+\item
+  Выберите модель и скопируйте её repo\_id.
+\end{enumerate}
+
+\CourseFigure{copy-id.png}{Пример поиска идентификатора репозитория модели на Hugging Face Hub \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit2/copy-id.png}{[оригинал]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Затем нужно вызвать \passthrough{\lstinline!load_from_hub!}, указав:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Идентификатор repo\_id.
+\item
+  Имя файла: сохранённая модель внутри репозитория.
+\end{itemize}
+
+\paragraph{Не изменяйте этот код}\label{do-not-modify-this-code-1}
+
+\begin{lstlisting}[language=Python]
+from urllib.error import HTTPError
+
+from huggingface_hub import hf_hub_download
+
+
+def load_from_hub(repo_id: str, filename: str) -> str:
+    """
+    Download a model from Hugging Face Hub.
+    :param repo_id: id of the model repository from the Hugging Face Hub
+    :param filename: name of the model zip file from the repository
+    """
+    # Get the model from the Hub, download and cache the model on your local disk
+    pickle_model = hf_hub_download(repo_id=repo_id, filename=filename)
+
+    with open(pickle_model, "rb") as f:
+        downloaded_model_file = pickle.load(f)
+
+    return downloaded_model_file
+\end{lstlisting}
+
+\subsubsection{.}\label{section-1}
+
+\begin{lstlisting}[language=Python]
+model = load_from_hub(repo_id="ThomasSimonini/q-Taxi-v3", filename="q-learning.pkl")  # Try to use another model
+
+print(model)
+env = gym.make(model["env_id"])
+
+evaluate_agent(env, model["max_steps"], model["n_eval_episodes"], model["qtable"], model["eval_seed"])
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+model = load_from_hub(
+    repo_id="ThomasSimonini/q-FrozenLake-v1-no-slippery", filename="q-learning.pkl"
+)  # Try to use another model
+
+env = gym.make(model["env_id"], is_slippery=False)
+
+evaluate_agent(env, model["max_steps"], model["n_eval_episodes"], model["qtable"], model["eval_seed"])
+\end{lstlisting}
+
+\subsection{Дополнительные задания}\label{some-additional-challenges}
+
+Лучший способ учиться --- \textbf{экспериментировать самостоятельно}! Как вы заметили, текущий агент пока работает не слишком хорошо. Для начала можно увеличить число шагов обучения. На миллионе шагов нам удалось получить отличные результаты!
+
+В \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров} вы найдёте своих агентов. Получится ли выйти на первое место?
+
+Несколько идей для улучшения позиции в таблице:
+
+\begin{itemize}
+\tightlist
+\item
+  Увеличьте число шагов обучения.
+\item
+  Попробуйте другие гиперпараметры, ориентируясь на опыт других участников.
+\item
+  \textbf{Опубликуйте новую обученную модель} в Hub.
+\end{itemize}
+
+Кажется, что ходить по льду и управлять такси скучно? Попробуйте \textbf{сменить среду}, например использовать FrozenLake-v1 со скольжением. Изучите, как работают другие среды, \href{https://gymnasium.farama.org/}{по документации Gymnasium}, и экспериментируйте с удовольствием.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Поздравляем! Вы только что реализовали, обучили и опубликовали своего первого агента обучения с подкреплением.
+
+Понимание Q-обучения --- \textbf{важный шаг к пониманию методов на основе ценности.}
+
+В следующем модуле мы изучим Deep Q-Learning и увидим, что создание и обновление Q-таблицы --- хорошая стратегия, \textbf{но она плохо масштабируется.}
+
+Например, представьте, что вы создаёте агента, который учится играть в Doom.
+
+\CourseFigure{basic.png}{Игра Doom \protect\href{https://vizdoom.cs.put.edu.pl/user/pages/01.tutorial/basic.png}{[оригинал]}}
+
+Doom --- большая среда с огромным пространством состояний (миллионы различных состояний). Создавать и обновлять Q-таблицу для такой среды неэффективно.
+
+Поэтому в следующем модуле мы изучим Deep Q-Learning --- алгоритм, \textbf{в котором нейронная сеть по заданному состоянию приближённо вычисляет Q-значения доступных действий.}
+
+\CourseFigure{atari-envs.png}{Игровые среды Atari \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[оригинал]}}
+
+Увидимся в третьем модуле!
+
+\subsection{Продолжайте учиться и развиваться}\label{keep-learning-stay-awesome}
+
+\section{Второй тест}\label{second-quiz}
+
+Лучший способ учиться и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{избежать иллюзии компетентности} --- \textbf{проверять себя}. Это помогает понять, \textbf{какие знания требуют закрепления}.
+
+\subsubsection{Вопрос 1. Что такое Q-обучение?}\label{q1-what-is-q-learning}
+
+\textbf{Выберите все подходящие ответы.}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Алгоритм, с помощью которого мы обучаем Q-функцию.
+\item
+  \textbf{B.} Функция ценности.
+\item
+  \textbf{C.} Алгоритм, определяющий ценность нахождения в заданном состоянии и выполнения в нём конкретного действия.
+\item
+  \textbf{D.} Таблица.
+\end{itemize}
+
+\subsubsection{Вопрос 2. Что такое Q-таблица?}\label{q2-what-is-a-q-table}
+
+\textbf{Выберите все подходящие ответы.}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Алгоритм, который мы используем в Q-обучении.
+\item
+  \textbf{B.} Q-таблица --- внутренняя память нашего агента.
+\item
+  \textbf{C.} Каждая ячейка Q-таблицы соответствует ценности состояния.
+\end{itemize}
+
+\subsubsection{\texorpdfstring{Вопрос 3. Почему наличие оптимальной Q-функции \(Q^*\) означает наличие оптимальной политики?}{Вопрос 3. Почему наличие оптимальной Q-функции Q* означает наличие оптимальной политики?}}\label{q3-why-if-we-have-an-optimal-q-function-q-we-have-an-optimal-policy}
+
+\subsubsection{\texorpdfstring{Вопрос 4. Можете ли вы объяснить, что такое \(\varepsilon\)-жадная стратегия?}{Вопрос 4. Можете ли вы объяснить, что такое epsilon-жадная стратегия?}}\label{q4-can-you-explain-what-is-epsilon-greedy-strategy}
+
+\subsubsection{Вопрос 5. Как обновляется Q-значение пары «состояние--действие»?}\label{q5-how-do-we-update-the-q-value-of-a-state-action-pair}
+
+\CourseFigure{q-update-ex.jpg}{Тест: определите компоненты формулы обновления Q-значения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-update-ex.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 6. В чём различие между on-policy и off-policy?}\label{q6-whats-the-difference-between-on-policy-and-off-policy}
+
+\subsection{Ответы и пояснения}\label{answer-key-and-explanations-1}
+
+\subsubsection{Вопрос 1. Что такое Q-обучение?}\label{q1-what-is-q-learning-1}
+
+\textbf{Правильный ответ: A}
+
+\begin{itemize}
+\item
+  \textbf{Вариант B:} Это функция ценности действий, поскольку она определяет ценность нахождения в заданном состоянии и выполнения в нём конкретного действия.
+\item
+  \textbf{Вариант C:} Q-функция определяет ценность нахождения в конкретном состоянии и выполнения в нём конкретного действия.
+\item
+  \textbf{Вариант D:} Q-обучение --- не Q-таблица. Q-функция --- это алгоритм, формирующий значения для Q-таблицы.
+\end{itemize}
+
+\subsubsection{Вопрос 2. Что такое Q-таблица?}\label{q2-what-is-a-q-table-1}
+
+\textbf{Правильный ответ: B}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Вариант C:} Каждая ячейка соответствует ценности пары «состояние--действие», а не отдельного состояния.
+\end{itemize}
+
+\subsubsection{\texorpdfstring{Вопрос 3. Почему наличие оптимальной Q-функции \(Q^*\) означает наличие оптимальной политики?}{Вопрос 3. Почему наличие оптимальной Q-функции Q* означает наличие оптимальной политики?}}\label{q3-why-if-we-have-an-optimal-q-function-q-we-have-an-optimal-policy-1}
+
+Потому что при наличии оптимальной Q-функции есть и оптимальная политика: для каждого состояния мы знаем, какое действие является наилучшим.
+
+\CourseFigure{link-value-policy.jpg}{Восстановление оптимальной политики из оптимальной функции ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[оригинал]}}
+
+\subsubsection{\texorpdfstring{Вопрос 4. Можете ли вы объяснить \(\varepsilon\)-жадную стратегию?}{Вопрос 4. Можете ли вы объяснить epsilon-жадную стратегию?}}\label{q4-can-you-explain-what-is-epsilon-greedy-strategy-1}
+
+\(\varepsilon\)-жадная стратегия --- это политика, обеспечивающая компромисс между исследованием среды и использованием накопленных знаний.
+
+Идея состоит в том, что мы задаём \(\varepsilon=1.0\):
+
+\begin{itemize}
+\tightlist
+\item
+  С \emph{вероятностью \(1-\varepsilon\)} используем знания (агент выбирает действие с максимальной ценностью пары «состояние--действие»).
+\item
+  С \emph{вероятностью \(\varepsilon\)} исследуем среду (пробуем случайное действие).
+\end{itemize}
+
+\CourseFigure{Q-learning-4.jpg}{\(\varepsilon\)-жадная стратегия: исследование и использование знаний \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-learning-4.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 5. Как обновляется Q-значение пары «состояние--действие»?}\label{q5-how-do-we-update-the-q-value-of-a-state-action-pair-1}
+
+\CourseFigure{q-update-solution.jpg}{Решение: компоненты формулы обновления Q-значения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-update-solution.jpg}{[оригинал]}}
+
+\subsubsection{Вопрос 6. В чём различие между on-policy и off-policy?}\label{q6-whats-the-difference-between-on-policy-and-off-policy-1}
+
+\CourseFigure{off-on-4.jpg}{Сравнение методов off-policy и on-policy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/off-on-4.jpg}{[оригинал]}}
+
+Поздравляем с прохождением теста! Если какие-то вопросы вызвали затруднения, вернитесь к материалу главы, чтобы закрепить знания.
+
+\section{Глоссарий}\label{glossary}
+
+Этот глоссарий составлен сообществом. Мы будем рады вашим дополнениям!
+
+\subsubsection{Стратегии поиска оптимальной политики}\label{strategies-to-find-the-optimal-policy}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Методы на основе политики (policy-based).} Обычно политика обучается с помощью нейронной сети, выбирающей действие по заданному состоянию. В этом случае именно нейронная сеть возвращает действие, которое должен выполнить агент, а не функция ценности. На основании опыта взаимодействия со средой параметры нейронной сети корректируются, и она начинает предлагать всё более подходящие действия.
+\item
+  \textbf{Методы на основе ценности (value-based).} В этом случае обучается функция ценности, выдающая оценку состояния или пары «состояние--действие», на основе которой строится политика. Однако само значение не указывает, какое действие нужно выполнить. Поэтому необходимо отдельно задать правила поведения агента по выходу функции ценности. Например, можно выбрать политику, всегда выполняющую действие с максимальным ожидаемым вознаграждением (жадную политику). Таким образом, политика --- это жадная стратегия (или любая другая заданная пользователем), использующая значения функции ценности для выбора действий.
+\end{itemize}
+
+\subsubsection{В методах на основе ценности различают два основных типа функций}\label{among-the-value-based-methods-we-can-find-two-main-strategies}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Функция ценности состояния.} Для каждого состояния выдаёт ожидаемую отдачу, если агент начинает из него и следует политике до конца.
+\item
+  \textbf{Функция ценности действия.} В отличие от функции ценности состояния, для каждой пары «состояние--действие» вычисляет ожидаемую отдачу, если агент начинает из заданного состояния, выполняет заданное действие, а затем всегда следует политике.
+\end{itemize}
+
+\subsubsection{\texorpdfstring{\(\varepsilon\)-жадная стратегия}{epsilon-жадная стратегия}}\label{epsilon-greedy-strategy}
+
+\begin{itemize}
+\tightlist
+\item
+  Распространённая стратегия обучения с подкреплением, которая балансирует исследование среды и использование известных знаний.
+\item
+  С вероятностью \(1-\varepsilon\) выбирает действие с максимальным ожидаемым вознаграждением.
+\item
+  С вероятностью \(\varepsilon\) выбирает случайное действие.
+\item
+  Обычно \(\varepsilon\) со временем уменьшают, постепенно смещая акцент в сторону использования накопленных знаний.
+\end{itemize}
+
+\subsubsection{Жадная стратегия}\label{greedy-strategy}
+
+\begin{itemize}
+\tightlist
+\item
+  Предполагает постоянный выбор действия, которое, согласно текущим знаниям о среде, должно принести наибольшее вознаграждение (только использование известных знаний).
+\item
+  Всегда выбирает действие с максимальным ожидаемым вознаграждением.
+\item
+  Не предусматривает исследования среды.
+\item
+  Может быть неэффективной в условиях неопределённости или когда оптимальные действия неизвестны.
+\end{itemize}
+
+\subsubsection{Алгоритмы off-policy и on-policy}\label{off-policy-vs-on-policy-algorithms}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Off-policy алгоритмы:} при обучении и применении модели используются разные политики.
+\item
+  \textbf{On-policy алгоритмы:} при обучении и применении модели используется одна и та же политика.
+\end{itemize}
+
+\subsubsection{Стратегии обучения Монте-Карло и с временными разностями}\label{monte-carlo-and-temporal-difference-learning-strategies}
+
+\begin{itemize}
+\item
+  \textbf{Монте-Карло (MC):} обучение в конце эпизода. Метод ждёт завершения эпизода, после чего по всему эпизоду обновляет функцию ценности (или политику).
+\item
+  \textbf{Временные разности (TD):} обучение на каждом шаге. Функция ценности (или политика) обновляется после каждого шага, не дожидаясь завершения эпизода.
+\end{itemize}
+
+Если хотите помочь улучшить курс, можете \href{https://github.com/huggingface/deep-rl-class/pulls}{создать Pull Request}.
+
+Этот глоссарий был подготовлен благодаря:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/ramon-rd}{Ramón Rueda}
+\item
+  \href{https://github.com/hasarinduperera/}{Hasarindu Perera}
+\item
+  \href{https://github.com/arkadyark/}{Arkady Arkhangorodsky}
+\end{itemize}
+
+\section{Заключение}\label{conclusion}
+
+Поздравляем с завершением главы! Мы разобрали много материала. И поздравляем с окончанием практики: вы только что самостоятельно реализовали первого RL-агента и поделились им в Hub.
+
+При изучении новой архитектуры \textbf{важно реализовать её самостоятельно с нуля, чтобы понять принцип работы.}
+
+\textbf{Совершенно нормально, если какие-то детали пока остаются непонятными}. \textbf{Со мной и со всеми, кто изучал RL, происходило то же самое.}
+
+Не спешите: прежде чем двигаться дальше, постарайтесь действительно понять материал.
+
+В следующей главе мы глубже изучим первый алгоритм глубокого обучения с подкреплением на базе Q-обучения: Deep Q-Learning. А затем вы обучите \textbf{DQN-агента с помощью \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL-Baselines3 Zoo} играть в игры Atari}.
+
+\CourseFigure{atari-envs.png}{Игровые среды Atari \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[оригинал]}}
+
+Наконец, нам очень важно \textbf{узнать ваше мнение о курсе и о том, как его улучшить}. Если у вас есть предложения, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполните эту форму}.
+
+\subsubsection{Продолжайте учиться и развиваться}\label{keep-learning-stay-awesome-1}
+
+\section{Дополнительная литература}\label{additional-readings}
+
+Эти материалы \textbf{необязательны} и предназначены для желающих изучить тему глубже.
+
+\subsection{Обучение Монте-Карло и с временными разностями}\label{monte-carlo-and-td-learning}
+
+Для более глубокого изучения методов Монте-Карло и TD:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://stats.stackexchange.com/questions/355820/why-do-temporal-difference-td-methods-have-lower-variance-than-monte-carlo-met}{Почему методы временных разностей (TD) имеют меньшую дисперсию, чем методы Монте-Карло?}
+\item
+  \href{https://stats.stackexchange.com/questions/336974/when-are-monte-carlo-methods-preferred-over-temporal-difference-ones}{В каких случаях методы Монте-Карло предпочтительнее методов временных разностей?}
+\end{itemize}
+
+\subsection{Q-обучение}\label{q-learning}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{http://incompleteideas.net/book/RLbook2020.pdf}{«Reinforcement Learning: An Introduction», Ричард Саттон и Эндрю Барто, главы 5, 6 и 7}
+\item
+  \href{https://youtu.be/Psrhxy88zww}{Цикл лекций «Foundations of Deep RL», лекция 2 о Deep Q-Learning, Питер Аббил}
+\end{itemize}
+
+\end{document}

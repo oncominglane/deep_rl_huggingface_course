@@ -1,0 +1,935 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course -- Bonus Unit 3.
+% Complete original MDX material; compiled with the existing shared preamble.
+% Compile from notes/ru/ with latexmk -pdf unitbonus3ru.tex
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unitbonus3/}}
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Hugging Face Deep RL / Бонусный модуль 3}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Дополнительные темы}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Бонусный модуль 3: дополнительные темы и направления исследований}
+\author{Курс Hugging Face Deep RL\\\small Полная русскоязычная учебная версия на основе MDX}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.65em}
+\begin{center}\small\color{secondary}Источник: курс Hugging Face Deep RL (оригинальный текст на английском языке).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.4em}
+\section{Введение}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Обзор бонусного модуля 3 курса Hugging Face Deep RL --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/thumbnail.png}{[оригинал изображения]}}
+
+Поздравляем с завершением курса! \textbf{Теперь у вас есть прочная база знаний по глубокому обучению с подкреплением}. Но это лишь начало вашего пути: впереди множество интересных направлений. В этом необязательном модуле мы \textbf{собрали материалы для знакомства с различными концепциями и исследовательскими темами в RL}.
+
+В отличие от других модулей, этот раздел подготовили сразу несколько участников команды Hugging Face. Для каждой темы указан её автор.
+
+Звучит интересно? Тогда начнём!
+
+\section{(Автоматическое) обучение по учебному плану в RL}\label{automatic-curriculum-learning-for-rl}
+
+Хотя большинство изученных в этом курсе методов RL хорошо работают на практике, в некоторых случаях их недостаточно. Например, если:
+
+\begin{itemize}
+\item
+  задача сложная и требует \textbf{постепенного освоения навыков} (скажем, прежде чем научиться преодолевать сложные препятствия, двуногий агент должен научиться стоять, затем ходить и, возможно, прыгать\ldots{});
+\item
+  среда изменяется, что влияет на сложность задачи, и требуется, чтобы агент был \textbf{устойчив} к таким изменениям.
+\end{itemize}
+
+\CourseFigure{bipedal_frame.png}{Обучение двуногого агента ходьбе в TeachMyAgent: пример поэтапного обучения --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/bipedal.gif}{[оригинал изображения]}}
+
+\CourseFigure{movable_creepers_frame.png}{Движущиеся препятствия в тестовой среде TeachMyAgent --- источник: \protect\href{https://developmentalsystems.org/TeachMyAgent/}{TeachMyAgent} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/movable_creepers.gif}{[оригинал изображения]}}
+
+В таких ситуациях агенту нужно последовательно предлагать разные задачи, организованные так, чтобы он постепенно приобретал навыки. Этот подход называется \textbf{Curriculum Learning --- обучением по учебному плану}; как правило, он предполагает вручную составленную последовательность задач. Например, можно изменять генерацию среды или начальные состояния либо использовать Self-Play, управляя сложностью предлагаемых агенту соперников.
+
+Поскольку спроектировать такой учебный план не всегда просто, направление \textbf{Automatic Curriculum Learning (ACL) занимается методами, которые автоматически учатся выбирать и организовывать задачи для повышения эффективности RL-агента}. Портелас и соавторы предложили следующее определение ACL:
+
+\begin{quote}
+\ldots{} семейство механизмов, которые автоматически адаптируют распределение обучающих данных, учась подбирать учебные ситуации в соответствии с возможностями RL-агентов.
+\end{quote}
+
+Например, OpenAI использовала \textbf{рандомизацию домена (Domain Randomization)} --- случайные изменения параметров среды --- для обучения роботизированной руки собирать кубик Рубика.
+
+\CourseFigure{dr.jpg}{Рандомизация домена при обучении роботизированной руки собирать кубик Рубика --- источник: \protect\href{https://openai.com/blog/solving-rubiks-cube/}{OpenAI: роботизированная рука собирает кубик Рубика} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/dr.jpg}{[оригинал изображения]}}
+
+Наконец, вы можете сами проверить устойчивость агентов, обученных в \href{https://huggingface.co/spaces/flowers-team/Interactive_DeepRL_Demo}{TeachMyAgent}: менять параметры среды или даже рисовать рельеф.
+
+\CourseFigure{demo.png}{Интерактивная среда TeachMyAgent с изменяемым рельефом --- источник: \protect\href{https://huggingface.co/spaces/flowers-team/Interactive_DeepRL_Demo}{https://huggingface.co/spaces/flowers-team/Interactive\_DeepRL\_Demo} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/demo.png}{[оригинал изображения]}}
+
+\subsection{Дополнительные материалы}\label{further-reading}
+
+Для более подробного знакомства с темой рекомендуем следующие материалы:
+
+\subsubsection{Обзор направления}\label{overview-of-the-field}
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/pdf/2003.04664.pdf}{Автоматическое построение учебного плана для Deep RL: краткий обзор}
+\item
+  \href{https://lilianweng.github.io/posts/2020-01-29-curriculum-rl/}{Поэтапное обучение с подкреплением}
+\end{itemize}
+
+\subsubsection{Современные методы}\label{recent-methods}
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/abs/2203.01302}{Эволюция учебных планов через проектирование сред на основе сожаления}
+\item
+  \href{https://proceedings.mlr.press/v162/klink22a.html}{Обучение по учебному плану с ограниченным оптимальным транспортом}
+\item
+  \href{https://arxiv.org/abs/2010.03934}{Приоритетное повторное использование уровней}
+\end{itemize}
+
+\subsection{Автор раздела}\label{author}
+
+Автор раздела: \href{https://twitter.com/ClementRomac}{Клеман Ромак (Clément Romac)}.
+
+\section{Обобщающая способность в обучении с подкреплением}\label{generalization-in-reinforcement-learning}
+
+Обобщающая способность играет важнейшую роль в обучении с подкреплением. Хотя \textbf{алгоритмы RL могут хорошо работать в контролируемых средах}, реальный мир создаёт \textbf{особые трудности из-за нестационарности и отсутствия заранее заданных границ возможных ситуаций}.
+
+Поэтому для применения RL в реальном мире принципиально важно разрабатывать алгоритмы, устойчивые к изменению условий, способные переносить знания на новые, но похожие задачи и адаптироваться к ранее неизвестным ситуациям.
+
+Если вы хотите глубже изучить эту исследовательскую тему, рекомендуем начать со следующих материалов:
+
+\begin{itemize}
+\item
+  \href{https://robertkirk.github.io/2022/01/17/generalisation-in-reinforcement-learning-survey.html}{Обобщающая способность в RL: обзор Роберта Кирка}: в этом подробном обзоре даётся \textbf{полезное введение в понятие обобщающей способности в RL}, поэтому он отлично подходит для начала изучения темы.
+\item
+  \href{https://blog.research.google/2021/09/improving-generalization-in.html?m=1}{Улучшение обобщения в RL с помощью вложений сходства политик}
+\end{itemize}
+
+\section{Модельно-ориентированное обучение с подкреплением (MBRL)}\label{model-based-reinforcement-learning-mbrl}
+
+Модельно-ориентированное обучение с подкреплением отличается от подходов без модели прежде всего тем, что агент изучает \emph{модель динамики}. Однако это отличие существенно влияет на дальнейший процесс принятия решений.
+
+Обычно такая модель описывает переходы между состояниями среды: \(s_{t+1} = f_\theta (s_t, a_t)\). Кроме того, в этом подходе можно применять модели обратной динамики (переход от состояния к действию) и модели вознаграждения (прогнозирование награды).
+
+\subsection{Простое определение}\label{simple-definition}
+
+\begin{itemize}
+\item
+  Агент многократно пытается решить задачу, \textbf{накапливая данные о состояниях и действиях}.
+\item
+  На основе этих данных агент создаёт средство для рассуждений об окружающем мире --- \emph{модель динамики}.
+\item
+  С помощью модели динамики агент \textbf{решает, как действовать, прогнозируя будущее}.
+\item
+  Выполняя действия, \textbf{агент собирает новые данные, улучшает модель и, в идеале, повышает качество последующих действий}.
+\end{itemize}
+
+\subsection{Формальное определение}\label{academic-definition}
+
+В модельно-ориентированном обучении с подкреплением (MBRL) агент взаимодействует со средой, \textbf{изучает модель этой среды}, а затем \textbf{использует её для управления (принятия решений)}.
+
+В частности, агент действует в марковском процессе принятия решений (MDP) с функцией перехода \(s_{t+1} = f (s_t , a_t)\) и получает награду на каждом шаге \(r(s_t, a_t)\). На основе собранного набора данных \(D :={ s_i, a_i, s_{i+1}, r_i}\) агент обучает модель \(s_{t+1} = f_\theta (s_t , a_t)\), \textbf{минимизируя отрицательное логарифмическое правдоподобие наблюдаемых переходов}.
+
+Мы используем метод управления с прогнозирующей моделью по выборкам (MPC). Обученная модель динамики позволяет максимизировать ожидаемое вознаграждение на конечном, рекурсивно прогнозируемом горизонте \(\tau\), рассматривая набор действий, выбранных из равномерного распределения \(U(a)\) (см. \href{https://arxiv.org/pdf/2002.04523}{работу}, \href{https://arxiv.org/pdf/2012.09156.pdf}{работу} или \href{https://arxiv.org/pdf/2009.01221.pdf}{работу}).
+
+\subsection{Дополнительные материалы}\label{further-reading-1}
+
+Для более подробного изучения MBRL рекомендуем следующие материалы:
+
+\begin{itemize}
+\item
+  \href{https://www.natolambert.com/writing/debugging-mbrl}{Публикация в блоге об отладке MBRL}.
+\item
+  \href{https://arxiv.org/abs/2006.16712}{Обзорная научная статья по MBRL}.
+\end{itemize}
+
+\subsection{Автор раздела}\label{author-1}
+
+Автор раздела: \href{https://twitter.com/natolambert}{Нейтан Ламберт (Nathan Lambert)}.
+
+\section{Офлайн- и онлайн-обучение с подкреплением}\label{offline-vs.-online-reinforcement-learning}
+
+Глубокое обучение с подкреплением (RL) --- подход \textbf{к созданию агентов, принимающих решения}. Агент старается изучить оптимальное поведение (политику), взаимодействуя со средой \textbf{методом проб и ошибок и получая вознаграждение как единственный сигнал обратной связи}.
+
+Цель агента --- \textbf{максимизировать суммарное вознаграждение}, называемое возвратом (return). В основе RL лежит \emph{гипотеза о вознаграждении}: любую цель можно описать как \textbf{максимизацию математического ожидания суммарного вознаграждения}.
+
+Агенты глубокого обучения с подкреплением \textbf{обучаются на пакетах опыта}. Но откуда берутся эти данные?
+
+\CourseFigure{offlinevsonlinerl_frame.png}{Сравнение офлайн- и онлайн-обучения с подкреплением --- источник: \protect\href{https://offline-rl.github.io/}{этот материал} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/offlinevsonlinerl.gif}{[оригинал изображения]}}
+
+\begin{itemize}
+\tightlist
+\item
+  При \emph{онлайн-обучении с подкреплением}, которое мы изучали на протяжении курса, агент \textbf{непосредственно собирает данные}: получает пакет опыта, \textbf{взаимодействуя со средой}, а затем сразу использует его для обновления политики (или сохраняет опыт в буфере воспроизведения для дальнейшего обучения).
+\end{itemize}
+
+Однако это означает, что нужно либо \textbf{обучать агента непосредственно в реальном мире, либо иметь симулятор}. Если симулятора нет, его придётся построить. Это может быть сложно (как достоверно воспроизвести всю сложность реального мира?), дорого и небезопасно: агент способен использовать ошибки симулятора для получения преимущества.
+
+\begin{itemize}
+\tightlist
+\item
+  При \emph{офлайн-обучении с подкреплением}, напротив, агент \textbf{использует только данные, собранные другими агентами или полученные из демонстраций людей}. Во время обучения он \textbf{не взаимодействует со средой}.
+\end{itemize}
+
+Процесс выглядит следующим образом:
+
+\begin{itemize}
+\item
+  \textbf{Создайте набор данных} с помощью одной или нескольких политик и/или действий человека.
+\item
+  \textbf{Обучите политику методом офлайн-RL}, используя этот набор данных.
+\end{itemize}
+
+У этого подхода есть недостаток: \emph{проблема контрфактических запросов}. Что делать, если агент \textbf{решит выполнить действие, для которого в наборе данных нет примеров}? Например, он захочет повернуть направо на перекрёстке, но соответствующая траектория отсутствует.
+
+Для этой проблемы существуют решения. Если хотите глубже изучить офлайн-обучение с подкреплением, можете \href{https://www.youtube.com/watch?v=k08N5a0gG0A}{посмотреть это видео}.
+
+\subsection{Дополнительные материалы}\label{further-reading-2}
+
+Для более подробного знакомства с темой рекомендуем следующие материалы:
+
+\begin{itemize}
+\item
+  \href{https://www.youtube.com/watch?v=qgZPZREor5I}{Офлайн-обучение с подкреплением: лекция Сергея Левина}
+\item
+  \href{https://arxiv.org/abs/2005.01643}{Офлайн-обучение с подкреплением: руководство, обзор и открытые проблемы}
+\end{itemize}
+
+\subsection{Автор раздела}\label{author-2}
+
+Автор раздела: \href{https://twitter.com/ThomasSimonini}{Томас Симонини (Thomas Simonini)}.
+
+\section{Трансформеры принятия решений (Decision Transformers)}\label{decision-transformers}
+
+Модель Decision Transformer представлена в работе \href{https://arxiv.org/abs/2106.01345}{«Decision Transformer: Reinforcement Learning via Sequence Modeling» Чена и соавторов}. Она рассматривает обучение с подкреплением как задачу условного моделирования последовательностей.
+
+Основная идея заключается в следующем. Вместо того чтобы обучать политику методами RL (например, аппроксимировать функцию ценности, подсказывающую, какое действие максимизирует возврат), \textbf{мы используем алгоритм моделирования последовательностей --- Transformer}. Получив желаемое значение возврата, предыдущие состояния и действия, он генерирует будущие действия, направленные на достижение этого возврата. Это авторегрессионная модель, обусловленная целевым возвратом, предшествующими состояниями и действиями.
+
+Это существенное изменение парадигмы RL: вместо традиционных алгоритмов используется генеративное моделирование траекторий, то есть совместного распределения последовательностей состояний, действий и наград. Таким образом, Decision Transformer не максимизирует возврат напрямую, а генерирует последовательность будущих действий, которая должна привести к заданному возврату.
+
+Команда Hugging Face Transformers интегрировала Decision Transformer --- метод офлайн-RL --- в библиотеку Transformers и Hugging Face Hub.
+
+\subsection{Как устроены трансформеры принятия решений}\label{learn-about-decision-transformers}
+
+Чтобы лучше понять Decision Transformer, прочитайте наш материал \href{https://huggingface.co/blog/decision-transformers}{«Знакомство с Decision Transformers на Hugging Face»}.
+
+\subsection{Обучите свой первый Decision Transformer}\label{train-your-first-decision-transformers}
+
+После знакомства с принципом работы Decision Transformer по \href{https://huggingface.co/blog/decision-transformers}{нашему вводному материалу} вы готовы самостоятельно обучить первую модель на офлайн-данных, чтобы она научила виртуального гепарда (HalfCheetah) бежать.
+
+Начните с руководства: \url{https://huggingface.co/blog/train-decision-transformers}
+
+\subsection{Дополнительные материалы}\label{further-reading-3}
+
+Для дальнейшего изучения рекомендуем следующие материалы:
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/abs/2106.01345}{Decision Transformer: RL через моделирование последовательностей}
+\item
+  \href{https://arxiv.org/abs/2202.05607}{Онлайн-вариант Decision Transformer}
+\end{itemize}
+
+\subsection{Автор раздела}\label{author-3}
+
+Автор раздела: \href{https://twitter.com/edwardbeeching}{Эдвард Бичинг (Edward Beeching)}.
+
+\section{Обучение с подкреплением на основе обратной связи от человека (RLHF)}\label{rlhf}
+
+Обучение с подкреплением на основе обратной связи от человека (RLHF) --- это \textbf{метод интеграции человеческих оценок в процесс оптимизации на основе RL}. Его применение связано с \textbf{трудностью формального моделирования человеческих предпочтений}.
+
+Для многих задач даже при попытке записать формулу идеального результата предпочтения разных людей будут отличаться.
+
+Обновление моделей \textbf{на основе измеряемых данных позволяет частично смягчить эти проблемы машинного обучения, неразрывно связанные с человеческими предпочтениями}.
+
+\subsection{С чего начать изучение RLHF}\label{start-learning-about-rlhf}
+
+Чтобы приступить к изучению RLHF:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Прочитайте вводную статью: \href{https://huggingface.co/blog/rlhf}{«Иллюстрированное введение в обучение с подкреплением по обратной связи от человека (RLHF)»}.
+\item
+  Посмотрите запись прямого эфира, в котором Нейтан объяснил основы RLHF и то, как эту технологию используют в современных инструментах машинного обучения, таких как ChatGPT. Большая часть лекции посвящена обзору связанных друг с другом ML-моделей. Рассматриваются основы обработки естественного языка, RL и применение RLHF к большим языковым моделям. В завершение обсуждаются открытые вопросы в RLHF.
+\end{enumerate}
+
+\textbf{Видеолекция:} \href{https://www.youtube.com/watch?v=2MBJOuVq380}{смотреть на YouTube}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Прочитайте и другие статьи по теме, например \href{https://robotic.substack.com/p/rlhf-chatgpt-data-moats}{«Продолжение дискуссии о закрытых API и открытом коде: RLHF, ChatGPT и преимущества данных»}. Если знаете интересные публикации, расскажите нам о них!
+\end{enumerate}
+
+\subsection{Дополнительная литература}\label{additional-readings}
+
+\emph{Примечание: этот текст взят из упомянутой выше статьи об RLHF}. Ниже перечислены основные научные публикации по RLHF на момент написания материала. Направление стало широко известно с развитием Deep RL (примерно с 2017 года), а затем расширилось в связи с применением больших языковых моделей в крупных технологических компаниях. Начнём с исследований, предшествовавших акценту на языковых моделях:
+
+\begin{itemize}
+\item
+  \href{https://www.cs.utexas.edu/~pstone/Papers/bib2html-links/ICDL08-knox.pdf}{TAMER: ручное обучение агента с помощью оценочного подкрепления} (Knox и Stone, 2008): предложен агент, для которого люди последовательно оценивают выполненные действия, позволяя обучить модель вознаграждения.
+\item
+  \href{http://proceedings.mlr.press/v70/macglashan17a/macglashan17a.pdf}{Интерактивное обучение на зависящей от политики обратной связи человека} (MacGlashan и соавт., 2017): предложен актор-критик COACH, в котором положительные и отрицательные оценки людей используются для настройки функции преимущества.
+\item
+  \href{https://proceedings.neurips.cc/paper/2017/hash/d5e2c0adad503c91f91df240d0cd4e49-Abstract.html}{Глубокое обучение с подкреплением на основе человеческих предпочтений} (Christiano и соавт., 2017): RLHF применяется к предпочтениям между траекториями в играх Atari.
+\item
+  \href{https://ojs.aaai.org/index.php/AAAI/article/view/11485}{Deep TAMER: интерактивная настройка поведения агента в высокоразмерных пространствах состояний} (Warnell и соавт., 2018): развитие TAMER, использующее глубокую нейросеть для прогнозирования вознаграждения.
+\end{itemize}
+
+Ниже --- подборка исследований, демонстрирующих эффективность RLHF для языковых моделей:
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/abs/1909.08593}{Дообучение языковых моделей на основе человеческих предпочтений} (Zieglar и соавт., 2019): раннее исследование влияния обучения вознаграждению на четыре конкретные задачи.
+\item
+  \href{https://proceedings.neurips.cc/paper/2020/hash/1f89885d556929e98d3ef9b86448f951-Abstract.html}{Обучение суммаризации текста на основе обратной связи человека} (Stiennon и соавт., 2020): применение RLHF к краткому изложению текстов. Продолжение --- \href{https://arxiv.org/abs/2109.10862}{Рекурсивное реферирование книг с обратной связью от человека} (команда OpenAI Alignment, 2021).
+\item
+  \href{https://arxiv.org/abs/2112.09332}{WebGPT: ответы на вопросы с помощью браузера и обратной связи человека} (OpenAI, 2021): RLHF для обучения агента навигации по веб-страницам.
+\item
+  InstructGPT: \href{https://arxiv.org/abs/2203.02155}{Обучение языковых моделей следованию инструкциям с помощью обратной связи человека} (команда OpenAI Alignment, 2022): применение RLHF к языковой модели общего назначения (\href{https://openai.com/blog/instruction-following/}{публикация в блоге} об InstructGPT).
+\item
+  GopherCite: \href{https://www.deepmind.com/publications/gophercite-teaching-language-models-to-support-answers-with-verified-quotes}{Обучение языковых моделей подкреплять ответы проверенными цитатами} (Menick и соавт., 2022): RLHF используется, чтобы языковая модель давала ответы с конкретными ссылками на источники.
+\item
+  Sparrow: \href{https://arxiv.org/abs/2209.14375}{Улучшение согласования диалоговых агентов с помощью целевых оценок людей} (Glaese и соавт., 2022): дообучение диалогового агента с использованием RLHF.
+\item
+  \href{https://openai.com/blog/chatgpt/}{ChatGPT: оптимизация языковых моделей для диалога} (OpenAI, 2022): обучение универсального разговорного помощника с использованием RLHF.
+\item
+  \href{https://arxiv.org/abs/2210.10760}{Законы масштабирования для чрезмерной оптимизации модели вознаграждения} (Gao и соавт., 2022): исследуются закономерности масштабирования обученной модели предпочтений в RLHF.
+\item
+  \href{https://arxiv.org/abs/2204.05862}{Обучение полезного и безопасного помощника с использованием RLHF} (Anthropic, 2022): подробное описание обучения языковой модели-помощника с обратной связью человека.
+\item
+  \href{https://arxiv.org/abs/2209.07858}{Красная команда против языковых моделей для снижения вреда: методы, масштабирование и выводы} (Ganguli и соавт., 2022): подробное описание усилий по выявлению, измерению и снижению потенциально вредных ответов языковых моделей.
+\item
+  \href{https://arxiv.org/abs/2208.02294}{Динамическое планирование в открытом диалоге с помощью обучения с подкреплением} (Cohen и соавт., 2022): RL используется для улучшения разговорных навыков диалогового агента.
+\item
+  \href{https://arxiv.org/abs/2210.01241}{(Не) подходит ли обучение с подкреплением для обработки естественного языка? Тестовые задачи, базовые методы и компоненты оптимизации языковой политики} (Ramamurthy, Ammanabrolu и соавт., 2022): обсуждается пространство решений при создании открытых инструментов RLHF и предлагается алгоритм NLPO (Natural Language Policy Optimization) как альтернатива PPO.
+\end{itemize}
+
+\subsection{Автор раздела}\label{author-4}
+
+Автор раздела: \href{https://twitter.com/natolambert}{Нейтан Ламберт (Nathan Lambert)}.
+
+\section{Языковые модели в RL}\label{language-models-in-rl}
+
+\subsection{Языковые модели содержат полезные знания для агентов}\label{lms-encode-useful-knowledge-for-agents}
+
+\textbf{Языковые модели} (LM) демонстрируют впечатляющие способности при работе с текстом: от ответов на вопросы до пошаговых рассуждений. Кроме того, обучение на огромных текстовых корпусах позволяет им \textbf{сохранять знания разных типов, в том числе абстрактные представления о физических законах нашего мира} (например, что можно сделать с предметом и что произойдёт при его вращении).
+
+Возникает естественный вопрос, который недавно начали активно изучать: могут ли такие знания помочь агентам, в том числе роботам, в выполнении повседневных задач? Хотя работы показали интересные результаты, предложенные агенты не обладали механизмом обучения. \textbf{Из-за этого они не могли адаптироваться к среде (например, исправлять неверные знания) или осваивать новые навыки}.
+
+\CourseFigure{language.png}{Применение знаний языковой модели к возможностям роботизированных систем --- источник: \protect\href{https://ai.googleblog.com/2022/08/towards-helpful-robots-grounding.html}{К полезным роботам: связь языка и возможностей роботов} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/language.png}{[оригинал изображения]}}
+
+\subsection{Языковые модели и обучение с подкреплением}\label{lms-and-rl}
+
+Поэтому между языковыми моделями, предоставляющими знания о мире, и RL, которое позволяет согласовывать и корректировать эти знания через взаимодействие со средой, возможна полезная синергия. Это особенно важно для RL, поскольку в данной области часто используют постановку \textbf{tabula rasa}: агент изучает всё с нуля, что приводит к:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi})}
+\item
+  Неэффективному использованию обучающих примеров.
+\item
+  Поведению, которое кажется человеку неожиданным.
+\end{enumerate}
+
+Одной из первых попыток стала работа \href{https://arxiv.org/abs/2302.02662v1}{«Привязка больших языковых моделей к среде посредством онлайн-обучения с подкреплением»}. Авторы решали задачу \textbf{адаптации и согласования языковой модели с текстовой средой при помощи PPO}. Было показано, что знания, уже содержащиеся в языковой модели, ускоряют адаптацию к среде (что открывает путь к RL с меньшими затратами выборки) и после согласования помогают лучше обобщать знания на новые задачи.
+
+\textbf{Видеодемонстрация:} \href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/papier_v4.mp4}{открыть оригинальное видео}
+
+Другое направление рассматривается в работе \href{https://arxiv.org/abs/2302.06692}{«Использование больших языковых моделей для направления предварительного обучения в RL»}. Языковая модель остаётся замороженной, но её знания применяются, чтобы \textbf{направлять исследование среды RL-агентом}. Это помогает агенту выбирать осмысленные для человека и потенциально полезные действия без необходимости постоянно привлекать человека во время обучения.
+
+\CourseFigure{language2.png}{Использование знаний языковой модели для исследования среды RL-агентом --- источник: \protect\href{https://ai.googleblog.com/2022/08/towards-helpful-robots-grounding.html}{К полезным роботам: связь языка и возможностей роботов} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/language2.png}{[оригинал изображения]}}
+
+Пока эти результаты предварительны и имеют ряд ограничений: например, наблюдения агента приходится преобразовывать в текст перед передачей языковой модели, а взаимодействие с очень большими языковыми моделями требует значительных вычислительных ресурсов.
+
+\subsection{Дополнительные материалы}\label{further-reading-4}
+
+Для более подробного знакомства с темой рекомендуем следующие материалы:
+
+\begin{itemize}
+\item
+  \href{https://ai.googleblog.com/2023/02/google-research-2022-beyond-robotics.html}{Google Research: робототехника в 2022 году и далее}
+\item
+  \href{https://arxiv.org/abs/2202.01771}{Предобученные языковые модели для интерактивного принятия решений}
+\item
+  \href{https://arxiv.org/abs/2302.02662v1}{Привязка больших языковых моделей к среде через онлайн-RL}
+\item
+  \href{https://arxiv.org/abs/2302.06692}{Направление предварительного обучения в RL с помощью языковых моделей}
+\end{itemize}
+
+\subsection{Автор раздела}\label{author-5}
+
+Автор раздела: \href{https://twitter.com/ClementRomac}{Клеман Ромак (Clément Romac)}.
+
+\section{Знакомство с Unreal Learning Agents}\label{an-introduction-to-unreal-learning-agents}
+
+\href{https://dev.epicgames.com/community/learning/tutorials/8OWY/unreal-engine-learning-agents-introduction}{Learning Agents} --- плагин Unreal Engine (UE), позволяющий \textbf{обучать игровых персонажей на основе методов машинного обучения (ML) непосредственно в Unreal}.
+
+Этот новый интересный плагин позволяет создавать собственные среды в Unreal Engine и обучать в них агентов.
+
+Рассмотрим, как \textbf{начать работу и обучить виртуальный автомобиль управлению движением в среде Unreal Engine}.
+
+\CourseFigure{learning-agents-car.png}{Unreal Engine Learning Agents: обучение агента управлению автомобилем --- источник: \protect\href{https://dev.epicgames.com/community/learning/tutorials/qj2O/unreal-engine-learning-to-drive}{Руководство по обучению автомобиля в Learning Agents} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/learning-agents-car.png}{[оригинал изображения]}}
+
+\subsection{Случай 1: для начинающих и незнакомых с Unreal Engine}\label{case-1-i-dont-know-anything-about-unreal-engine-and-beginners-in-unreal-engine}
+
+Если вы ещё не знакомы с Unreal Engine, не переживайте! Чтобы начать использовать Learning Agents, предлагаем пройти два вводных курса:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Освойте основы: начните с курса \href{https://dev.epicgames.com/community/learning/courses/ZpX/your-first-hour-in-unreal-engine-5/E7L/introduction-to-your-first-hour-in-unreal-engine-5}{«Ваш первый час в Unreal Engine 5»}. Он \textbf{даст базовые знания, необходимые для работы с Unreal}.
+\item
+  Познакомьтесь с Blueprints: изучите визуальную систему скриптов Unreal Engine. \href{https://youtu.be/W0brCeJNMqk?si=zy4t4t1l6FMIzbpz}{Этот видеокурс} познакомит вас с данным инструментом.
+\end{enumerate}
+
+Овладев основами, \textbf{вы готовы экспериментировать с Learning Agents}:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\item
+  Получите общее представление о Learning Agents, \href{https://dev.epicgames.com/community/learning/tutorials/8OWY/unreal-engine-learning-agents-introduction}{прочитав этот обзор}.
+\item
+  \href{https://dev.epicgames.com/community/learning/tutorials/qj2O/unreal-engine-learning-to-drive}{Научите автомобиль ездить с помощью обучения с подкреплением в Learning Agents}.
+\item
+  \href{https://www.youtube.com/watch?v=NwYUNlFvajQ}{Посмотрите руководство по имитационному обучению с плагином Learning Agents для Unreal Engine 5.3}.
+\end{enumerate}
+
+\subsection{Случай 2: для знакомых с Unreal Engine}\label{case-2-im-familiar-with-unreal}
+
+Если вы уже знакомы с Unreal Engine, можете сразу перейти к Learning Agents, воспользовавшись следующими руководствами:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Получите общее представление о Learning Agents, \href{https://dev.epicgames.com/community/learning/tutorials/8OWY/unreal-engine-learning-agents-introduction}{прочитав этот обзор}.
+\item
+  \href{https://dev.epicgames.com/community/learning/tutorials/qj2O/unreal-engine-learning-to-drive}{Научите автомобиль ездить с помощью обучения с подкреплением в Learning Agents}.
+\item
+  \href{https://www.youtube.com/watch?v=NwYUNlFvajQ}{Посмотрите руководство по имитационному обучению с плагином Learning Agents для Unreal Engine 5.3}.
+\end{enumerate}
+
+\section{Godot RL Agents}\label{godot-rl-agents}
+
+\href{https://github.com/edbeeching/godot_rl_agents}{Godot RL Agents} --- пакет с открытым исходным кодом, который даёт разработчикам игр, исследователям ИИ и энтузиастам возможность \textbf{обучать сложному поведению неигровых персонажей (NPC) и агентов}.
+
+Библиотека предоставляет:
+
+\begin{itemize}
+\item
+  Интерфейс между играми, созданными в \href{https://godotengine.org/}{Godot Engine}, и алгоритмами машинного обучения на Python.
+\item
+  Обёртки для четырёх известных RL-фреймворков: \href{https://stable-baselines3.readthedocs.io/en/master/}{StableBaselines3}, \href{https://docs.cleanrl.dev/}{CleanRL}, \href{https://www.samplefactory.dev/}{Sample Factory} и \href{https://docs.ray.io/en/latest/rllib-algorithms.html}{Ray RLlib}.
+\item
+  Поддержку агентов с памятью на основе LSTM или интерфейсов внимания.
+\item
+  Поддержку \emph{двумерных и трёхмерных игр}.
+\item
+  Набор \emph{датчиков ИИ}, расширяющих возможности агента по наблюдению игрового мира.
+\item
+  Godot и Godot RL Agents \textbf{полностью бесплатны, имеют открытый код и распространяются по весьма свободной лицензии MIT}. Без скрытых условий и лицензионных отчислений.
+\end{itemize}
+
+Узнать больше о Godot RL Agents можно на \href{https://github.com/edbeeching/godot_rl_agents}{странице GitHub} или из \href{https://arxiv.org/abs/2112.03636}{статьи, представленной на семинаре AAAI 2022}. Создатель библиотеки \href{https://edbeeching.github.io/}{Эд Бичинг} работает исследователем в Hugging Face.
+
+Установка библиотеки проста: \texttt{pip\ install\ godot-rl}
+
+\subsection{Создание собственной RL-среды с Godot RL Agents}\label{create-a-custom-rl-environment-with-godot-rl-agents}
+
+В этом разделе вы \textbf{научитесь создавать собственную среду в игровом движке Godot}, а затем реализуете контроллер ИИ, который учится играть с помощью глубокого обучения с подкреплением.
+
+Сегодня мы создадим простую игру, \textbf{которая тем не менее демонстрирует многие возможности Godot Engine и библиотеки Godot RL Agents}. Затем вы сможете изучить примеры более сложных сред и способов поведения.
+
+Наша среда называется Ring Pong. Это разновидность пинг-понга, где игровое поле имеет форму кольца, а ракетка перемещается по его окружности. \textbf{Цель --- удерживать мяч внутри кольца, отбивая его ракеткой}.
+
+\CourseFigure{ringpong_frame.png}{Ring Pong: пользовательская игровая среда на Godot --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/ringpong.gif}{[оригинал изображения]}}
+
+\subsubsection{Установка игрового движка Godot}\label{installing-the-godot-game-engine}
+
+\href{https://godotengine.org/}{Игровой движок Godot} --- инструмент с открытым исходным кодом для \textbf{разработки видеоигр, программ и пользовательских интерфейсов}.
+
+Godot Engine --- многофункциональный кроссплатформенный игровой движок для создания 2D- и 3D-игр в единой среде. Он предоставляет большой набор стандартных инструментов, поэтому разработчики \textbf{могут сосредоточиться на создании игр, не изобретая заново базовые механизмы}. Игры можно экспортировать практически одним нажатием для основных настольных ОС (Linux, macOS, Windows), мобильных платформ (Android, iOS) и веба (HTML5).
+
+Мы проведём вас через реализацию агента, но, возможно, вам захочется лучше изучить сам Godot. Его \href{https://docs.godotengine.org/en/latest/index.html}{документация} весьма подробна, а на YouTube есть множество уроков. Также рекомендуем источники \href{https://www.gdquest.com/}{GDQuest}, \href{https://kidscancode.org/godot_recipes/4.x/}{KidsCanCode} и \href{https://www.youtube.com/channel/UCczi7Aq_dTKrQPF5ZV5J3gg}{Bramwell}.
+
+Чтобы создавать игры в Godot, \textbf{сначала необходимо скачать редактор}. В материалах курса заявлена поддержка версии Godot 4.0 библиотекой Godot RL Agents.
+
+Редактор можно скачать по следующим ссылкам:
+
+\begin{itemize}
+\item
+  \href{https://downloads.tuxfamily.org/godotengine/4.0.1/Godot_v4.0.1-stable_win64.exe.zip}{Windows}
+\item
+  \href{https://downloads.tuxfamily.org/godotengine/4.0.1/Godot_v4.0.1-stable_macos.universal.zip}{Mac}
+\item
+  \href{https://downloads.tuxfamily.org/godotengine/4.0.1/Godot_v4.0.1-stable_linux.x86_64.zip}{Linux}
+\end{itemize}
+
+\subsubsection{Загрузка стартового проекта}\label{loading-the-starter-project}
+
+Мы предоставляем два варианта исходного кода:
+
+\begin{itemize}
+\item
+  \href{https://drive.google.com/file/d/1C7xd3TibJHlxFEJPBgBLpksgxrFZ3D8e/view?usp=share_link}{Стартовый проект: скачайте его и выполняйте шаги руководства}.
+\item
+  \href{https://drive.google.com/file/d/1k-b2Bu7uIA6poApbouX4c3sq98xqogpZ/view?usp=share_link}{Готовая версия проекта для сравнения и поиска ошибок}.
+\end{itemize}
+
+Чтобы загрузить проект, в Godot Project Manager нажмите \textbf{Import}, перейдите в каталог с файлами и выберите \textbf{project.godot}.
+
+Если нажать F5 или запустить игру из редактора, можно играть в режиме человека. Одновременно запускается несколько копий игры, поскольку мы хотим ускорить обучение ИИ-агента с помощью параллельных сред.
+
+\subsubsection{Установка плагина Godot RL Agents}\label{installing-the-godot-rl-agents-plugin}
+
+Плагин Godot RL Agents можно установить из репозитория GitHub или через встроенный каталог Godot AssetLib.
+
+Сначала откройте AssetLib и выполните поиск по слову ``rl.
+
+\CourseFigure{godot1.png}{Поиск плагина RL Agents в каталоге ресурсов Godot AssetLib --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot1.png}{[оригинал изображения]}}
+
+Затем выберите Godot RL Agents, нажмите Download, снимите галочки с файлов LICENSE и README .md и нажмите Install.
+
+\CourseFigure{godot2.png}{Установка плагина RL Agents в Godot --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot2.png}{[оригинал изображения]}}
+
+Теперь плагин Godot RL Agents загружен на компьютер. Откройте Project -\textgreater{} Project settings и включите дополнение:
+
+\CourseFigure{godot3.png}{Включение расширения RL Agents в настройках проекта Godot --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot3.png}{[оригинал изображения]}}
+
+\subsubsection{Добавление контроллера ИИ}\label{adding-the-ai-controller}
+
+Теперь добавим в нашу игру контроллер ИИ. Откройте сцену player.tscn: слева должно появиться дерево узлов примерно следующего вида:
+
+\CourseFigure{godot4.png}{Дерево сцены Godot перед добавлением контроллера ИИ --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot4.png}{[оригинал изображения]}}
+
+Щёлкните правой кнопкой мыши по узлу \textbf{Player} и выберите \textbf{Add Child Node}. В списке узлов найдите AIController3D и создайте его.
+
+\CourseFigure{godot5.png}{Добавление дочернего узла AIController3D в Godot --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot5.png}{[оригинал изображения]}}
+
+Узел AIController появится в дереве сцены. Рядом с ним будет значок скрипта: нажмите его, чтобы открыть связанный с контроллером код. Godot использует язык GDScript, синтаксически похожий на Python. Скрипт содержит методы, которые нужно реализовать для работы контроллера ИИ.
+
+\begin{lstlisting}
+#-- Methods that need implementing using the "extend script" option in Godot --#
+func get_obs() -> Dictionary:
+	assert(false, "the get_obs method is not implemented when extending from ai_controller")
+	return {"obs":[]}
+
+func get_reward() -> float:
+	assert(false, "the get_reward method is not implemented when extending from ai_controller")
+	return 0.0
+
+func get_action_space() -> Dictionary:
+	assert(false, "the get get_action_space method is not implemented when extending from ai_controller")
+	return {
+		"example_actions_continous" : {
+			"size": 2,
+			"action_type": "continuous"
+		},
+		"example_actions_discrete" : {
+			"size": 2,
+			"action_type": "discrete"
+		},
+		}
+
+func set_action(action) -> void:
+	assert(false, "the get set_action method is not implemented when extending from ai_controller")
+# -----------------------------------------------------------------------------#
+\end{lstlisting}
+
+Для реализации этих методов создадим класс, наследующий AIController3D. В Godot это делается легко и называется расширением класса (extending).
+
+Щёлкните правой кнопкой мыши по узлу AIController3D, выберите ``Extend Script и назовите новый скрипт \texttt{controller.gd}. В результате появится почти пустой файл следующего вида:
+
+\begin{lstlisting}
+extends AIController3D
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass # Replace with function body.
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta):
+	pass
+\end{lstlisting}
+
+Теперь реализуем четыре отсутствующих метода: удалим этот шаблон и заменим его следующим кодом:
+
+\begin{lstlisting}
+extends AIController3D
+
+# Stores the action sampled for the agent's policy, running in python
+var move_action : float = 0.0
+
+func get_obs() -> Dictionary:
+	# get the balls position and velocity in the paddle's frame of reference
+	var ball_pos = to_local(_player.ball.global_position)
+	var ball_vel = to_local(_player.ball.linear_velocity)
+	var obs = [ball_pos.x, ball_pos.z, ball_vel.x/10.0, ball_vel.z/10.0]
+
+	return {"obs":obs}
+
+func get_reward() -> float:
+	return reward
+
+func get_action_space() -> Dictionary:
+	return {
+		"move_action" : {
+			"size": 1,
+			"action_type": "continuous"
+		},
+		}
+
+func set_action(action) -> void:
+	move_action = clamp(action["move_action"][0], -1.0, 1.0)
+\end{lstlisting}
+
+Теперь мы определили наблюдение агента --- положение и скорость мяча в его локальной системе координат. Пространство действий тоже задано: одно непрерывное значение в диапазоне от -1 до +1.
+
+Следующий шаг --- обновить скрипт Player, чтобы использовать действия из AIController. Нажмите значок скрипта рядом с узлом Player и замените содержимое файла \texttt{Player.gd} следующим кодом:
+
+\begin{lstlisting}
+extends Node3D
+
+@export var rotation_speed = 3.0
+@onready var ball = get_node("../Ball")
+@onready var ai_controller = $AIController3D
+
+func _ready():
+	ai_controller.init(self)
+
+func game_over():
+	ai_controller.done = true
+	ai_controller.needs_reset = true
+
+func _physics_process(delta):
+	if ai_controller.needs_reset:
+		ai_controller.reset()
+		ball.reset()
+		return
+
+	var movement : float
+	if ai_controller.heuristic == "human":
+		movement = Input.get_axis("rotate_anticlockwise", "rotate_clockwise")
+	else:
+		movement = ai_controller.move_action
+	rotate_y(movement*delta*rotation_speed)
+
+func _on_area_3d_body_entered(body):
+	ai_controller.reward += 1.0
+\end{lstlisting}
+
+Теперь необходимо синхронизировать игру, запущенную в Godot, и нейросеть, обучаемую в Python. Для этого Godot RL Agents предоставляет специальный узел. Откройте сцену train.tscn, щёлкните правой кнопкой мыши по корневому узлу и выберите ``Add Child Node. Найдите ``sync и добавьте узел синхронизации Godot RL Agents Sync. Он обеспечивает обмен данными между Python и Godot по TCP.
+
+Обучение можно запускать прямо в редакторе, предварительно запустив Python-процесс обучения командой \texttt{gdrl}.
+
+В этом простом примере агент осваивает достаточно хорошую политику за несколько минут. Чтобы ускорить обучение, выберите узел Sync в сцене train: в инспекторе доступен параметр ``Speed Up:
+
+\CourseFigure{godot6.png}{Узел синхронизации Godot RL Agents: параметр Speed Up --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot6.png}{[оригинал изображения]}}
+
+Попробуйте установить значение этого параметра равным 8. Это ускорит обучение и особенно пригодится в сложных средах, например в многопользовательском шутере от первого лица, который мы рассмотрим в следующей главе.
+
+\subsubsection{Экспорт модели}\label{export-model}
+
+\href{https://github.com/edbeeching/godot_rl_agents/tree/main?tab=readme-ov-file\#exporting-and-loading-your-trained-agent-in-onnx-format}{Справочная документация}
+
+На время отложим редактор Godot. Чтобы сохранить обученную модель, понадобится выполнить несколько команд в терминале.
+
+В версии библиотеки Godot RL, описанной в исходном материале, доступна экспериментальная поддержка ONNX-моделей для Stable Baselines 3, RLlib и CleanRL.
+
+Например, выберем Stable Baselines 3. Обучите агента при помощи \href{https://github.com/edbeeching/godot_rl_agents/blob/main/examples/stable_baselines3_example.py}{примера SB3} (\href{https://github.com/edbeeching/godot_rl_agents/blob/main/docs/ADV_STABLE_BASELINES_3.md\#train-a-model-from-scratch}{инструкция к скрипту}), включив параметр \texttt{-\/-onnx\_export\_path=model.onnx}.
+
+Пример команды запуска:
+
+\begin{lstlisting}
+cd <....> # go into this Godot project directory
+python stable_baselines3_example.py --timesteps=100_000 --onnx_export_path=model.onnx --save_model_path=model.zip --save_checkpoint_frequency=20_000 --experiment_name=exp1
+\end{lstlisting}
+
+Если всё настроено правильно, в терминале появятся примерно следующие сообщения:
+
+\begin{lstlisting}
+No game binary has been provided, please press PLAY in the Godot editor
+waiting for remote GODOT connection on port 11008
+\end{lstlisting}
+
+\begin{quote}\raggedright
+Если при запуске stable\_baselines3\_example возникает ошибка импорта ``ImportError: cannot import name `export\_model\_as\_onnx\' from `godot\_rl.wrappers.onnx.stable\_baselines\_export\'\,, посмотрите решение в \href{https://github.com/edbeeching/godot_rl_agents/issues/203}{этом обсуждении}.
+\end{quote}
+
+Теперь вернитесь в редактор Godot и нажмите PLAY в правом верхнем углу. Откроется игровая сцена с обучающимся агентом, а в терминале начнут появляться метрики. Дождитесь завершения обучения. Если всё прошло успешно, в каталоге проекта Godot должен появиться файл \texttt{model.onnx}.
+
+\subsubsection{Использование обученной модели в игре}\label{apply-ai-in-the-game}
+
+Теперь подключим обученную модель к игре!
+
+В редакторе Godot найдите узел Sync в файле \texttt{train.tscn}:
+
+\begin{itemize}
+\item
+  В выпадающем списке переключите режим управления на \texttt{Onnx\ Inference}.
+\item
+  Укажите в параметре \texttt{Onnx\ Model\ Path} имя файла модели, в нашем случае \texttt{model.onnx}.
+\end{itemize}
+
+Для запуска игры в этом режиме нужна Mono-версия редактора Godot (вариант с поддержкой .NET), которую можно скачать с официального сайта. Также требуется установить \href{https://dotnet.microsoft.com/en-us/download}{.NET}.
+
+С большой вероятностью первая попытка завершится ошибкой. Ниже перечислены возможные проблемы и способы их устранения:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Ошибка \texttt{Invalid\ Call.\ Nonexistent\ function\ \textquotesingle{}new\textquotesingle{}\ in\ base\ \textquotesingle{}CSharpScript\textquotesingle{}}: \href{https://github.com/edbeeching/godot_rl_agents/blob/main/docs/TROUBLESHOOTING.md}{решение}.
+\item
+  Ошибки, связанные с \texttt{onnxruntime} на macOS: \href{https://github.com/microsoft/onnxruntime/issues/9707}{решение}.
+\end{enumerate}
+
+\subsubsection{Что ещё можно сделать}\label{theres-more}
+
+Мы рассмотрели лишь малую часть возможностей Godot RL Agents. В библиотеке есть дополнительные пользовательские датчики и камеры, расширяющие информацию, которую получает агент. Посмотрите \href{https://github.com/edbeeching/godot_rl_agents_examples}{примеры}, чтобы узнать больше!
+
+Чтобы узнать об экспорте обученной модели в .onnx для запуска инференса непосредственно в Godot без Python-сервера, а также о других полезных параметрах обучения, изучите \href{https://github.com/edbeeching/godot_rl_agents/blob/main/docs/ADV_STABLE_BASELINES_3.md}{расширенное руководство по SB3}.
+
+\subsection{Автор раздела}\label{author-6}
+
+Автор раздела: \href{https://twitter.com/edwardbeeching}{Эдвард Бичинг (Edward Beeching)}.
+
+\section{Введение в документирование RL-систем}\label{brief-introduction-to-rl-documentation}
+
+В этой дополнительной теме мы рассмотрим вопрос: \textbf{как отслеживать работу и документировать поведение мощных RL-агентов, которые мы обучаем в реальном мире и которые взаимодействуют с людьми?}
+
+По мере того как системы машинного обучения всё сильнее влияют на современную жизнь, \textbf{растёт потребность в их документировании}.
+
+Такая документация может описывать используемые обучающие данные --- где они хранятся, когда были собраны, кто участвовал в сборе и т. д.; либо процесс оптимизации модели --- архитектуру, метрики оценки, связанные статьи и многое другое.
+
+Сегодня всё шире распространяются карточки моделей и паспорта наборов данных. Например, они доступны на Hub (см. \href{https://huggingface.co/docs/hub/model-cards}{документацию}).
+
+Открыв страницу \href{https://huggingface.co/models}{популярной модели на Hub}, можно узнать о процессе её создания.
+
+Такие журналы, относящиеся к конкретной модели или набору данных, обычно заполняют во время их создания, но впоследствии не обновляют, когда модель становится частью развивающейся системы.
+
+\subsection{Зачем нужны отчёты о вознаграждениях (Reward Reports)}\label{motivating-reward-reports}
+
+Системы RL по своей природе оптимизируются по сигналу вознаграждения во времени. Хотя понятие функции вознаграждения можно связать с хорошо изученными областями обучения с учителем (через функцию потерь), наше понимание того, как поведение систем машинного обучения изменяется со временем, пока ограничено.
+
+Поэтому авторы предлагают \href{https://www.notion.so/Brief-introduction-to-RL-documentation-b8cbda5a6f5242338e0756e6bef72af4}{\emph{Reward Reports for Reinforcement Learning --- отчёты о вознаграждениях в RL}}. Название намеренно перекликается с известными работами \emph{Model Cards for Model Reporting} и \emph{Datasheets for Datasets}. Цель --- предложить тип документации, ориентированный на \textbf{человеческие аспекты определения вознаграждения} и \textbf{системы обратной связи, изменяющиеся во времени}.
+
+Опираясь на форматы документации \href{https://arxiv.org/abs/1810.03993}{карточек моделей} и \href{https://arxiv.org/abs/1803.09010}{паспортов наборов данных}, предложенные Митчелл и Гебру с соавторами, мы обосновываем необходимость отчётов Reward Reports для систем ИИ.
+
+\textbf{Reward Reports} --- постоянно обновляемые документы для предполагаемых внедрений RL, фиксирующие выбранные проектные решения.
+
+Однако остаётся много вопросов о применимости такого подхода к разным RL-задачам, трудностях интерпретируемости систем и сходстве уже внедрённых систем обучения с учителем с последовательным принятием решений в RL.
+
+Как минимум Reward Reports дают практикам RL возможность обсудить эти вопросы и приступить к поиску способов их решения.
+
+\subsection{Документирование изменений поведения во времени}\label{capturing-temporal-behavior-with-documentation}
+
+Ключевой элемент документации для RL и ML-систем с обратной связью --- \emph{журнал изменений (change-log)}. Он фиксирует обновления со стороны разработчика (изменившиеся параметры обучения, данные и т. п.) и замеченные пользователями изменения (вредное поведение, неожиданные ответы и т. п.).
+
+В дополнение к журналу предусмотрены события, которые должны запускать обновление отчёта и побуждают наблюдать за последствиями изменений.
+
+\subsection{Участие в проекте}\label{contributing}
+
+Некоторые наиболее влиятельные RL-системы затрагивают множество заинтересованных сторон, но разрабатываются закрыто внутри частных компаний. Поскольку такие компании в значительной степени действуют без специального регулирования, ответственность за документирование часто ложится на общественность.
+
+Если вы хотите принять участие, мы создаём публичные Reward Reports для популярных ML-систем на \href{https://github.com/RewardReports/reward-reports}{GitHub}.
+
+Для дальнейшего чтения обратитесь к \href{https://arxiv.org/abs/2204.10817}{статье о Reward Reports} или посмотрите \href{https://github.com/RewardReports/reward-reports/tree/main/examples}{пример отчёта}.
+
+\subsection{Автор раздела}\label{author-7}
+
+Автор раздела: \href{https://twitter.com/natolambert}{Нейтан Ламберт (Nathan Lambert)}.
+
+\section{Интересные среды для экспериментов}\label{interesting-environments-to-try}
+
+Здесь мы собрали интересные среды, в которых вы можете попробовать обучить своих агентов:
+
+\subsection{DIAMBRA Arena}\label{diambra-arena}
+
+\CourseFigure{diambraarena.png}{DIAMBRA Arena: аркадные среды для экспериментов с RL --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/diambraarena.png}{[оригинал изображения]}}
+
+DIAMBRA Arena --- программный пакет с набором качественных сред для исследований и экспериментов в области обучения с подкреплением. Он предоставляет стандартный интерфейс к популярным аркадным играм в эмуляторе, а его Python API полностью соответствует формату OpenAI Gym/Gymnasium, поэтому начать работу с ним легко.
+
+Поддерживаются основные операционные системы (Linux, Windows, macOS); пакет легко установить через \href{https://pypi.org/project/diambra-arena/}{pip}. Использование бесплатно, нужно лишь зарегистрироваться на \href{https://diambra.ai/register/}{официальном сайте}.
+
+Кроме того, в \href{https://github.com/diambra/}{репозитории GitHub} есть примеры основных сценариев использования, которые можно запустить за несколько шагов.
+
+\paragraph{Основные возможности}\label{main-features}
+
+Все среды представляют собой эпизодические RL-задачи с дискретными действиями (кнопки геймпада) и наблюдениями в виде пикселей экрана, дополненными числовыми данными (значения RAM, например полосы здоровья или расположение персонажа на арене).
+
+Поддерживаются одиночный режим (1P) и режим двух игроков (2P). Поэтому платформу удобно использовать для обычного RL, соревновательного многоагентного обучения, соревнований человека и агента, Self-Play, имитационного обучения и обучения с человеком в контуре (Human-in-the-Loop).
+
+\href{https://docs.diambra.ai/envs/games/}{Доступные игры} выбраны из числа популярных ретро-файтингов. Хотя их базовая механика схожа, каждая предлагает свои трудности: разный набор и число персонажей, комбинации приёмов, восстановление здоровья и т. д.
+
+DIAMBRA Arena разработана с учётом совместимости с основными RL-библиотеками. Она предоставляет готовые интерфейсы для \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable Baselines 3} и \href{https://docs.ray.io/en/latest/rllib/index.html}{Ray RLlib}; также доступна устаревшая поддержка Stable Baselines. Примеры приведены в \href{https://docs.diambra.ai/}{официальной документации} и \href{https://github.com/diambra/agents}{репозитории DIAMBRA Agents}. По аналогии можно подключить и другие библиотеки.
+
+\subsubsection{Соревновательная платформа}\label{competition-platform}
+
+DIAMBRA также предоставляет соревновательную платформу, полностью интегрированную с Hugging Face Hub: вы можете публиковать обученных агентов и соревноваться с другими разработчиками со всего мира в турнирах по видеоиграм!
+
+На платформе есть публичная таблица лидеров, в которой пользователи ранжируются по лучшим результатам их агентов в разных средах.
+
+В зависимости от результатов агента можно получать различные достижения.
+
+Поступившие агенты оцениваются, а записи их эпизодов транслируются на \href{https://www.twitch.tv/diambra_ai}{канале DIAMBRA в Twitch}.
+
+\paragraph{Ссылки}\label{references}
+
+Чтобы начать работу с этой средой, воспользуйтесь следующими ресурсами:
+
+\begin{itemize}
+\item
+  \href{https://docs.diambra.ai/}{Официальная документация}
+\item
+  \href{https://diambra.ai}{Соревновательная платформа}
+\item
+  \href{https://github.com/diambra/}{GitHub}
+\item
+  \href{https://diambra.ai/discord}{Discord}
+\end{itemize}
+
+\subsection{MineRL}\label{minerl}
+
+\CourseFigure{minerl.jpg}{MineRL: задачи обучения с подкреплением на основе Minecraft --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/minerl.jpg}{[оригинал изображения]}}
+
+MineRL --- библиотека Python с интерфейсом Gym для взаимодействия с игрой Minecraft и наборами данных, собранными из действий людей. Каждый год с использованием библиотеки проводятся соревнования. Подробнее --- на \href{https://minerl.io/}{сайте проекта}.
+
+Чтобы начать работу с этой средой, воспользуйтесь следующими ресурсами:
+
+\begin{itemize}
+\item
+  \href{https://www.youtube.com/watch?v=z6PTrGifupU}{Что такое MineRL?}
+\item
+  \href{https://www.youtube.com/watch?v=8yIrWcyWGek}{Первые шаги в MineRL}
+\item
+  \href{https://minerl.readthedocs.io/en/latest/}{Документация и руководства MineRL}
+\end{itemize}
+
+\subsection{Симулятор DonkeyCar}\label{donkeycar-simulator}
+
+\CourseFigure{donkeycar.jpg}{Симуляционная среда DonkeyCar --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/donkeycar.jpg}{[оригинал изображения]}}
+
+DonkeyCar --- платформа автономного вождения для любительских радиоуправляемых автомобилей. Эта версия симулятора построена на Unity: используются физика и графика движка, а связь с процессом Python позволяет обученной модели управлять виртуальным автомобилем Donkey.
+
+Чтобы начать работу с этой средой, воспользуйтесь следующими ресурсами:
+
+\begin{itemize}
+\item
+  \href{https://docs.donkeycar.com/guide/deep_learning/simulator/}{Документация симулятора DonkeyCar}
+\item
+  \href{https://www.youtube.com/watch?v=ngK33h00iBE}{Плавное вождение: руководство Антонена Раффена, часть 1}
+\item
+  \href{https://www.youtube.com/watch?v=DUqssFvcSOY}{Плавное вождение: руководство Антонена Раффена, часть 2}
+\item
+  \href{https://www.youtube.com/watch?v=v8j2bpcE4Rg}{Плавное вождение: руководство Антонена Раффена, часть 3}
+\item
+  Предварительно обученные агенты:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \url{https://huggingface.co/araffin/tqc-donkey-mountain-track-v0}
+  \item
+    \url{https://huggingface.co/araffin/tqc-donkey-avc-sparkfun-v0}
+  \item
+    \url{https://huggingface.co/araffin/tqc-donkey-minimonaco-track-v0}
+  \end{itemize}
+\end{itemize}
+
+\subsection{StarCraft II}\label{starcraft-ii}
+
+\CourseFigure{alphastar.jpg}{AlphaStar и StarCraft II как среда для исследования RL --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/alphastar.jpg}{[оригинал изображения]}}
+
+StarCraft II --- известная \emph{стратегия в реальном времени}. Компания DeepMind использовала эту игру для исследований в области глубокого RL, создав \href{https://www.deepmind.com/blog/alphastar-mastering-the-real-time-strategy-game-starcraft-ii}{AlphaStar}.
+
+Чтобы начать работу с этой средой, воспользуйтесь следующими ресурсами:
+
+\begin{itemize}
+\item
+  \href{http://starcraftgym.com/}{StarCraft Gym}
+\item
+  \href{https://www.youtube.com/watch?v=q59wap1ELQ4}{ИИ учится играть в StarCraft II: руководство по RL}
+\end{itemize}
+
+\subsection{Автор раздела}\label{author-8}
+
+Автор раздела: \href{https://twitter.com/ThomasSimonini}{Томас Симонини (Thomas Simonini)}.
+
+\section{Студенческие проекты}\label{student-works}
+
+С момента запуска курса Deep Reinforcement Learning \textbf{многие студенты создали замечательные проекты, с которыми стоит познакомиться и в которых можно принять участие}.
+
+Если вы разработали интересный проект, можете \href{https://github.com/huggingface/deep-rl-class}{добавить его в этот список, создав pull request в репозитории GitHub}.
+
+Проекты \textbf{отсортированы по датам их публикации на этой странице}.
+
+\subsection{Space Scavanger AI}\label{space-scavanger-ai}
+
+Этот проект представляет собой космическую игровую среду с нейросетевым ИИ.
+
+ИИ обучается с помощью методов RL на основе фреймворков Unity ML-Agents и RLlib.
+
+\CourseFigure{spacescavangerai.png}{Студенческий проект Space Scavanger AI --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/spacescavangerai.png}{[оригинал изображения]}}
+
+Играть можно здесь: \url{https://swingshuffle.itch.io/spacescalvagerai}
+
+Посмотреть проект Unity: \url{https://github.com/HighExecutor/SpaceScalvagerAI}
+
+\subsection{Neural Nitro}\label{neural-nitro}
+
+\CourseFigure{neuralnitro.png}{Студенческий проект Neural Nitro: гоночная среда --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/neuralnitro.png}{[оригинал изображения]}}
+
+В этом проекте Sookeyy создал низкополигональную гоночную игру и научил автомобиль ездить.
+
+Посмотреть демонстрацию: \url{https://sookeyy.itch.io/neuralnitro}
+
+\subsection{Space War}\label{space-war}
+
+\CourseFigure{spacewar.jpg}{Студенческий проект Space War --- источник: \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/spacewar.jpg}{[оригинал изображения]}}
+
+В этом проекте Эрик Донг (Eric Dong) воссоздаёт в Pygame версию игры Space War Билла Сайлера (1985 год) и использует обучение с подкреплением для тренировки ИИ-агентов.
+
+Проект пока находится в разработке!
+
+\subsubsection{Демонстрация}\label{demo}
+
+Версия для разработчиков (Dev/Edge):
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://e-dong.itch.io/spacewar-dev}
+\end{itemize}
+
+Стабильная версия:
+
+\begin{itemize}
+\item
+  \url{https://e-dong.itch.io/spacewar}
+\item
+  \url{https://huggingface.co/spaces/EricofRL/SpaceWarRL}
+\end{itemize}
+
+\subsubsection{Публикации сообщества}\label{community-blog-posts}
+
+Будет объявлено позже.
+
+\subsubsection{Другие ссылки}\label{other-links}
+
+Исходный код: \url{https://github.com/e-dong/space-war-rl}\\
+Блог автора: \url{https://dev.to/edong/space-war-rl-0-series-introduction-25dh}
+
+\subsection{Трансформеры принятия решений для торговли}\label{decision-transformers-for-trading}
+
+В этом проекте студент исследовал обучение Decision Transformer для биржевой торговли. На первом этапе реализовано офлайн-обучение; в следующей версии планируется добавить онлайн-дообучение.
+
+\CourseFigure{decision-transformers-trading.png}{Студенческий проект Decision Transformers for Trading --- источник: \protect\href{https://www.youtube.com/watch?v=w4Bw8WYL8Ps}{Stanford CS25: Decision Transformer и моделирование последовательностей} \protect\href{https://github.com/user-attachments/assets/41e3bc10-2594-4c05-b48f-17666cc8fb1c}{[оригинал изображения]}}
+
+Исходный код: \url{https://github.com/ra9hur/Decision-Transformers-For-Trading}
+
+\end{document}

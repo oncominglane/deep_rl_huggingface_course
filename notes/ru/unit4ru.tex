@@ -1,0 +1,1803 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 4 (complete MDX study edition).
+% Compiled with latexmk -pdf from the notes/ directory; uses existing preamble.tex.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit4/}}
+% Reuse existing shared preamble, override unit-specific running headers.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Deep RL от Hugging Face \enspace/\enspace Модуль 4}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Градиент политики}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 4: градиент политики и REINFORCE}
+\author{Курс Deep RL от Hugging Face\\\small Полное учебное издание на основе исходных MDX-файлов}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Исходный материал: курс Deep RL от Hugging Face.\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Введение}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Обложка модуля 4: градиент политики и REINFORCE \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/thumbnail.png}{[оригинал]}}
+
+В предыдущем модуле мы изучили глубокое Q-обучение (Deep Q-Learning). В этом алгоритме глубокого обучения с подкреплением, основанном на оценке ценности, мы \textbf{использовали глубокую нейронную сеть для аппроксимации различных Q-значений каждого возможного действия в данном состоянии.}
+
+С самого начала курса мы изучали только методы, основанные на оценке ценности, \textbf{где функция ценности служит промежуточным этапом на пути к оптимальной политике.}
+
+\CourseFigure{link-value-policy.jpg}{Связь между оценками ценности действий и выбором политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[оригинал]}}
+
+В методах, основанных на ценности, политика \textbf{\(\pi\) возникает на основе оценок ценности действий: по сути, это функция} (например, жадная политика), которая в заданном состоянии выбирает действие с максимальной ценностью.
+
+В методах, основанных на политике, мы стремимся оптимизировать непосредственно политику \textbf{без промежуточного этапа обучения функции ценности.}
+
+Сегодня мы \textbf{познакомимся с методами, основанными на политике, и изучим их подмножество --- методы градиента политики (policy gradient)}. Затем с нуля реализуем на PyTorch первый алгоритм градиента политики --- Monte Carlo \textbf{REINFORCE}. После этого проверим устойчивость его работы в средах CartPole-v1 и PixelCopter.
+
+Далее ты сможешь самостоятельно дорабатывать эту реализацию и применять её в более сложных средах.
+
+\CourseFigure{envs.png}{Среды CartPole и PixelCopter (статичный кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/envs.gif}{[оригинал]}}
+
+Приступим!
+
+\section{Что такое методы, основанные на политике?}\label{what-are-the-policy-based-methods}
+
+Основная задача обучения с подкреплением --- \textbf{найти оптимальную политику \(\pi^{*}\), максимизирующую ожидаемую суммарную награду}. В основе обучения с подкреплением лежит \emph{гипотеза вознаграждения} (reward hypothesis): \textbf{любую цель можно выразить как максимизацию ожидаемой суммарной награды.}
+
+Например, в футболе (агентов для которого ты будешь обучать через два модуля) цель --- выиграть матч. На языке обучения с подкреплением её можно выразить как \textbf{максимизацию числа забитых сопернику голов} (когда мяч пересекает линию ворот) и \textbf{минимизацию числа голов, пропущенных в собственные ворота}.
+
+\CourseFigure{soccer.jpg}{Пример футбола для объяснения цели максимизации награды \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/soccer.jpg}{[оригинал]}}
+
+\subsection{Методы на основе ценности, на основе политики и Actor--Critic}\label{value-based-policy-based-and-actor-critic-methods}
+
+В первом модуле мы рассмотрели два подхода к поиску (или, чаще, аппроксимации) этой оптимальной политики \(\pi^{*}\).
+
+\begin{itemize}
+\tightlist
+\item
+  В \emph{методах на основе ценности} мы обучаем функцию ценности.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Идея состоит в том, что оптимальная функция ценности позволяет получить оптимальную политику \(\pi^{*}\).
+  \item
+    Наша цель --- \textbf{минимизировать ошибку между предсказанной и целевой ценностью}, чтобы аппроксимировать истинную функцию ценности действий.
+  \item
+    Политика при этом существует, но задана неявно, поскольку \textbf{непосредственно строится по функции ценности}. Например, в Q-обучении мы использовали \(\varepsilon\)-жадную политику.
+  \end{itemize}
+\item
+  Напротив, в \emph{методах на основе политики} мы напрямую учимся аппроксимировать \(\pi^{*}\), не обучая функцию ценности.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Основная идея --- \textbf{параметризовать политику}. Например, нейронная сеть \(\pi_\theta\) выдаёт распределение вероятностей действий (стохастическая политика).
+  \item
+  \end{itemize}
+\end{itemize}
+
+\CourseFigure{stochastic_policy.png}{Стохастическая политика выдаёт распределение вероятностей действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/stochastic_policy.png}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Следовательно, наша задача --- \textbf{максимизировать качество параметризованной политики методом градиентного подъёма}.
+\item
+  Для этого мы изменяем параметры \(\theta\), влияющие на распределение действий в каждом состоянии.
+\end{itemize}
+
+\CourseFigure{policy_based.png}{Нейронная сеть политики: преобразование состояния в вероятности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_based.png}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  В следующем модуле мы изучим метод \emph{Actor--Critic}, объединяющий подходы на основе ценности и на основе политики.
+\end{itemize}
+
+Таким образом, методы на основе политики позволяют непосредственно оптимизировать \(\pi_\theta\), чтобы получать распределение \(\pi_\theta(a|s)\), обеспечивающее наибольшую суммарную отдачу. Для этого мы определяем целевую функцию \(J(\theta)\), равную ожидаемой суммарной награде, и \textbf{ищем такое значение \(\theta\), при котором она максимальна}.
+
+\subsection{Различие между методами на основе политики и методами градиента политики}\label{the-difference-between-policy-based-and-policy-gradient-methods}
+
+Методы градиента политики, которым посвящён этот модуль, представляют собой подкласс методов на основе политики. Для таких методов оптимизация чаще всего происходит \emph{on-policy}, поскольку на каждом шаге обновления мы используем только данные (траектории), собранные \textbf{самой последней версией политики} \(\pi_\theta\).
+
+Разница между этими подходами \textbf{заключается в способе оптимизации параметров} \(\theta\):
+
+\begin{itemize}
+\tightlist
+\item
+  В \emph{методах на основе политики} мы непосредственно ищем оптимальную политику. Параметры \(\theta\) можно оптимизировать \textbf{косвенно}, максимизируя локальную аппроксимацию целевой функции с помощью восхождения на холм (hill climbing), имитации отжига или эволюционных стратегий.
+\item
+  В \emph{методах градиента политики}, как подклассе методов на основе политики, мы также непосредственно ищем оптимальную политику. Но параметры \(\theta\) оптимизируются \textbf{напрямую} посредством градиентного подъёма целевой функции \(J(\theta)\).
+\end{itemize}
+
+Прежде чем подробно разбирать работу методов градиента политики (целевую функцию, теорему о градиенте политики, градиентный подъём и т. д.), рассмотрим их преимущества и недостатки.
+
+\section{Преимущества и недостатки методов градиента политики}\label{the-advantages-and-disadvantages-of-policy-gradient-methods}
+
+На этом этапе можно спросить: «Но ведь глубокое Q-обучение отлично работает! Зачем использовать градиент политики?» Чтобы ответить, рассмотрим \textbf{преимущества и недостатки методов градиента политики}.
+
+\subsection{Преимущества}\label{advantages}
+
+По сравнению с методами на основе ценности у них есть несколько достоинств. Рассмотрим некоторые из них.
+
+\subsubsection{Простота интеграции}\label{the-simplicity-of-integration}
+
+Мы можем непосредственно оценивать политику, не сохраняя дополнительных данных (ценностей действий).
+
+\subsubsection{Методы градиента политики способны обучать стохастическую политику}\label{policy-gradient-methods-can-learn-a-stochastic-policy}
+
+Методы градиента политики могут \textbf{обучать стохастическую политику, тогда как функции ценности сами по себе такой возможности не дают}.
+
+Отсюда следуют два последствия:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Нам \textbf{не требуется вручную задавать компромисс между исследованием среды и использованием найденного (exploration/exploitation)}. Поскольку на выходе получаем распределение вероятностей действий, агент исследует \textbf{пространство состояний, не повторяя постоянно одну и ту же траекторию.}
+\item
+  Мы также избавляемся от проблемы \textbf{неразличимости состояний по наблюдениям} (perceptual aliasing). Она возникает, когда два состояния выглядят одинаковыми (или действительно совпадают с точки зрения наблюдений), но требуют разных действий.
+\end{enumerate}
+
+Рассмотрим пример: у нас есть умный робот-пылесос, который должен собирать пыль и при этом не причинять вреда хомякам.
+
+\CourseFigure{hamster1.jpg}{Стохастические политики: первая иллюстрация с роботом-пылесосом \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/hamster1.jpg}{[оригинал]}}
+
+Наш робот-пылесос умеет определять только расположение стен.
+
+Проблема в том, что \textbf{два отмеченных красным состояния неразличимы для агента: в обоих он воспринимает стену сверху и снизу}.
+
+\CourseFigure{hamster2.jpg}{Стохастические политики: вторая иллюстрация \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/hamster2.jpg}{[оригинал]}}
+
+При детерминированной политике агент в красном состоянии либо всегда идёт вправо, либо всегда влево. \textbf{В обоих случаях он застрянет и так и не доберётся до пыли}.
+
+Если использовать алгоритм обучения с подкреплением на основе ценности, то мы получим \textbf{почти детерминированную политику} («\(\varepsilon\)-жадную стратегию»). В результате агент может \textbf{очень долго искать пыль}.
+
+Напротив, оптимальная стохастическая политика \textbf{случайным образом выбирает движение влево или вправо в красных состояниях}. Благодаря этому \textbf{агент не застрянет и с высокой вероятностью достигнет цели}.
+
+\CourseFigure{hamster3.jpg}{Стохастические политики: третья иллюстрация \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/hamster3.jpg}{[оригинал]}}
+
+\subsubsection{Методы градиента политики эффективнее в пространствах действий высокой размерности и с непрерывными действиями}\label{policy-gradient-methods-are-more-effective-in-high-dimensional-action-spaces-and-continuous-actions-spaces}
+
+Проблема глубокого Q-обучения в том, что для каждого состояния на каждом шаге алгоритм \textbf{предсказывает оценку (максимальную ожидаемую будущую награду) для каждого возможного действия}.
+
+Но что, если возможных действий бесконечно много?
+
+Например, у беспилотного автомобиля в каждом состоянии может быть (практически) бесконечное множество действий: повернуть руль на 15°, 17,2°, 19,4°, посигналить и т. д. \textbf{Нам пришлось бы получать Q-значение для каждого возможного действия}! К тому же \textbf{поиск максимума среди непрерывного множества действий сам по себе представляет задачу оптимизации}!
+
+Вместо этого методы градиента политики выдают \textbf{распределение вероятностей по действиям}.
+
+\subsubsection{Методы градиента политики обладают более благоприятными свойствами сходимости}\label{policy-gradient-methods-have-better-convergence-properties}
+
+В методах на основе ценности мы используем достаточно жёсткий оператор для \textbf{изменения функции ценности: выбираем максимум среди Q-оценок}. Поэтому вероятности выбора действий могут резко меняться даже при сколь угодно малом изменении оценок, если в результате максимальное значение получает другое действие.
+
+Например, если во время обучения лучшим действием было движение влево (Q-значение 0,22), а уже после следующего шага --- вправо (Q-значение для него стало 0,23), то политика резко изменится: теперь агент почти всегда будет двигаться вправо, а не влево.
+
+Напротив, в методах градиента политики предпочтения стохастической политики (вероятности выбора действий) \textbf{изменяются плавно с течением времени}.
+
+\subsection{Недостатки}\label{disadvantages}
+
+Разумеется, методы градиента политики имеют и свои недостатки:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Методы градиента политики нередко сходятся к локальному максимуму вместо глобального оптимума.}
+\item
+  Градиентный подъём происходит медленно, \textbf{шаг за шагом: обучение может занимать больше времени (неэффективность по выборке)}.
+\item
+  Оценки градиента политики могут иметь высокую дисперсию. В модуле об Actor--Critic мы разберём причины и способы решения этой проблемы.
+\end{itemize}
+
+Если хочешь подробнее узнать о преимуществах и недостатках методов градиента политики, \href{https://youtu.be/y3oqOjHilio}{посмотри это видео}.
+
+\section{Более глубокое знакомство с методами градиента политики}\label{diving-deeper-into-policy-gradient-methods}
+
+\subsection{Общая картина}\label{getting-the-big-picture}
+
+Мы только что узнали, что методы градиента политики ищут параметры \(\theta\), \textbf{максимизирующие ожидаемую отдачу}.
+
+Основная идея: у нас есть \emph{параметризованная стохастическая политика}. В нашем случае нейронная сеть выдаёт распределение вероятностей действий. Вероятность выбора каждого действия также называют \emph{предпочтением действия} (action preference).
+
+Рассмотрим среду CartPole-v1:
+
+\begin{itemize}
+\tightlist
+\item
+  На вход подаётся состояние.
+\item
+  На выходе получаем распределение вероятностей возможных действий в этом состоянии.
+\end{itemize}
+
+\CourseFigure{policy_based.png}{Нейронная сеть политики: преобразование состояния в вероятности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_based.png}{[оригинал]}}
+
+В методах градиента политики мы хотим \textbf{управлять распределением вероятностей действий}, настраивая политику так, чтобы \textbf{хорошие действия (повышающие отдачу) в дальнейшем выбирались чаще}. После каждого взаимодействия агента со средой мы корректируем параметры, увеличивая вероятность выбора удачных действий в будущем.
+
+Но \textbf{как оптимизировать веса с помощью ожидаемой отдачи}?
+
+Идея заключается в том, чтобы \textbf{позволить агенту взаимодействовать со средой в течение эпизода}. Если эпизод завершился успехом, считаем, что выполненные действия были хорошими и впоследствии их стоит выбирать чаще, поскольку они привели к победе.
+
+Следовательно, для каждой пары «состояние--действие» мы хотим увеличить \(P(a|s)\) --- вероятность выбрать данное действие в данном состоянии. А если эпизод завершился неудачей, эту вероятность нужно уменьшить.
+
+Упрощённая схема алгоритма градиента политики выглядит так:
+
+\CourseFigure{pg_bigpicture.jpg}{Общая схема обновления параметров в методе градиента политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/pg_bigpicture.jpg}{[оригинал]}}
+
+Теперь, когда общая картина понятна, углубимся в устройство методов градиента политики.
+
+\subsection{Подробный разбор методов градиента политики}\label{diving-deeper-into-policy-gradient-methods-1}
+
+У нас есть стохастическая политика \(\pi\) с параметрами \(\theta\). Получая состояние, эта политика \textbf{выдаёт распределение вероятностей действий}.
+
+\CourseFigure{stochastic_policy.png}{Стохастическая политика выдаёт распределение вероятностей действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/stochastic_policy.png}{[оригинал]}}
+
+Здесь \(\pi_\theta(a_t|s_t)\) --- вероятность того, что агент, следуя заданной политике, выберет действие \(a_t\) в состоянии \(s_t\).
+
+\textbf{Но как определить, хороша ли наша политика?} Нужна количественная мера её качества. Для этого введём функцию оценки, или целевую функцию, \(J(\theta)\).
+
+\subsubsection{Целевая функция}\label{the-objective-function}
+
+\emph{Целевая функция} характеризует \textbf{качество работы агента} с учётом траектории (последовательности состояний и действий без учёта наград, в отличие от полного описания эпизода) и возвращает \emph{ожидаемую суммарную награду}.
+
+\CourseFigure{objective.jpg}{Целевая функция градиента политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/objective.jpg}{[оригинал]}}
+
+Разберём эту формулу подробнее:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Ожидаемая отдача} (или ожидаемая суммарная награда) представляет собой взвешенное среднее всех возможных значений отдачи \(R(\tau)\), причём веса определяются вероятностями \(P(\tau;\theta)\).
+\end{itemize}
+
+\CourseFigure{expected_reward.png}{Ожидаемая отдача как целевая функция оптимизации \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/expected_reward.png}{[оригинал]}}
+
+\begin{itemize}
+\item
+  \(R(\tau)\) --- отдача от произвольной траектории. Чтобы использовать её для вычисления ожидаемой отдачи, нужно умножить её на вероятность соответствующей траектории.
+\item
+  \(P(\tau;\theta)\) --- вероятность конкретной траектории \(\tau\). Она зависит от \(\theta\), поскольку эти параметры определяют политику выбора действий, а значит, влияют и на посещаемые состояния.
+\end{itemize}
+
+\CourseFigure{probability.png}{Вероятность траектории при параметризованной политике \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/probability.png}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \(J(\theta)\) --- ожидаемая отдача: для её вычисления суммируем по всем траекториям произведения вероятности каждой траектории при заданных \(\theta\) на отдачу этой траектории.
+\end{itemize}
+
+Таким образом, наша цель --- максимизировать ожидаемую суммарную награду, найдя параметры \(\theta\), формирующие наилучшие распределения вероятностей действий:
+
+\CourseFigure{max_objective.png}{Максимизация целевой функции по параметрам политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/max_objective.png}{[оригинал]}}
+
+\subsection{Градиентный подъём и теорема о градиенте политики}\label{gradient-ascent-and-the-policy-gradient-theorem}
+
+Градиент политики --- задача оптимизации: мы хотим найти значения \(\theta\), при которых целевая функция \(J(\theta)\) максимальна. Поэтому используем \textbf{градиентный подъём} (gradient ascent). Это противоположность \emph{градиентному спуску}: градиент задаёт направление наиболее быстрого увеличения \(J(\theta)\).
+
+Если нужно вспомнить различие между градиентным спуском и подъёмом, прочитай \href{https://www.baeldung.com/cs/gradient-descent-vs-ascent}{эту статью} и \href{https://stats.stackexchange.com/questions/258721/gradient-ascent-vs-gradient-descent-in-logistic-regression}{это объяснение}.
+
+Шаг обновления при градиентном подъёме записывается так:
+
+\(\theta \leftarrow \theta + \alpha *  \nabla_\theta J(\theta)\)
+
+Мы можем многократно применять это обновление, рассчитывая на сходимость \(\theta\) к значению, максимизирующему \(J(\theta)\).
+
+Однако при вычислении производной \(J(\theta)\) возникают две проблемы:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Мы не можем вычислить точный градиент целевой функции: для этого нужно рассчитать вероятности всех возможных траекторий, что вычислительно чрезвычайно дорого. Поэтому мы хотим \textbf{оценивать градиент по выборке (собирая некоторое число траекторий)}.
+\item
+  Есть и другая проблема, которую я объясняю в следующем необязательном разделе. Для дифференцирования целевой функции пришлось бы дифференцировать распределение состояний, связанное с динамикой марковского процесса принятия решений (MDP). Эта динамика определяется средой: она задаёт вероятность перехода в следующее состояние при известном текущем состоянии и действии агента. Но мы можем не знать эту динамику и потому не можем её дифференцировать.
+\end{enumerate}
+
+\CourseFigure{probability.png}{Вероятность траектории при параметризованной политике \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/probability.png}{[оригинал]}}
+
+К счастью, существует решение --- \emph{теорема о градиенте политики} (Policy Gradient Theorem). Она позволяет преобразовать выражение для градиента целевой функции так, чтобы не требовалось дифференцировать распределение состояний.
+
+\CourseFigure{policy_gradient_theorem.png}{Теорема о градиенте политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_theorem.png}{[оригинал]}}
+
+Если хочешь понять, как выводится эта формула оценки градиента, перейди к следующему (необязательному) разделу.
+
+\subsection{Алгоритм REINFORCE (Monte Carlo REINFORCE)}\label{the-reinforce-algorithm-monte-carlo-reinforce}
+
+Алгоритм REINFORCE, также называемый методом градиента политики Монте-Карло, --- это алгоритм градиента политики, который \textbf{использует оценку отдачи за целый эпизод для обновления параметров политики} \(\theta\):
+
+В цикле:
+
+\begin{itemize}
+\tightlist
+\item
+  Используем политику \(\pi_\theta\), чтобы собрать эпизод \(\tau\).
+\item
+  По этому эпизоду оцениваем градиент \(\hat{g} = \nabla_\theta J(\theta)\).
+\end{itemize}
+
+\CourseFigure{policy_gradient_one.png}{Обновление REINFORCE по одной выбранной траектории \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_one.png}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Обновляем веса политики: \(\theta \leftarrow \theta + \alpha \hat{g}\).
+\end{itemize}
+
+Это обновление можно интерпретировать следующим образом:
+
+\begin{itemize}
+\item
+  \(\nabla_\theta log \pi_\theta(a_t|s_t)\) --- направление \textbf{наиболее быстрого увеличения логарифма вероятности} выбора действия \(a_t\) в состоянии \(s_t\). Этот градиент показывает, \textbf{как нужно изменить веса политики}, чтобы увеличить или уменьшить логарифм вероятности выбора \(a_t\) в \(s_t\).
+\item
+  \(R(\tau)\) --- функция оценки качества:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Если отдача велика, она будет \textbf{повышать вероятности} соответствующих пар (состояние, действие).
+  \item
+    Если отдача мала, она будет \textbf{понижать вероятности} соответствующих пар (состояние, действие).
+  \end{itemize}
+\end{itemize}
+
+Для оценки градиента можно также \textbf{собирать несколько эпизодов (траекторий)}:
+
+\CourseFigure{policy_gradient_multiple.png}{Обновление REINFORCE с усреднением по нескольким траекториям \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_multiple.png}{[оригинал]}}
+
+\section{(Необязательно) Теорема о градиенте политики}\label{optional-the-policy-gradient-theorem}
+
+В этом необязательном разделе мы \textbf{разберём, как дифференцировать целевую функцию для приближённого вычисления градиента политики}.
+
+Для начала вспомним наши формулы:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Целевая функция.
+\end{enumerate}
+
+\CourseFigure{expected_reward.png}{Ожидаемая отдача как целевая функция оптимизации \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/expected_reward.png}{[оригинал]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Вероятность траектории (при условии, что действия выбираются политикой \(\pi_\theta\)):
+\end{enumerate}
+
+\CourseFigure{probability.png}{Вероятность траектории при параметризованной политике \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/probability.png}{[оригинал]}}
+
+Итак, имеем:
+
+\(\nabla_\theta J(\theta) =  \nabla_\theta \sum_{\tau}P(\tau;\theta)R(\tau)\)
+
+Градиент суммы можно представить как сумму градиентов:
+
+\(=  \sum_{\tau} \nabla_\theta (P(\tau;\theta)R(\tau)) = \sum_{\tau} \nabla_\theta P(\tau;\theta)R(\tau)\), поскольку \(R(\tau)\) не зависит от \(\theta\).
+
+Затем умножим каждый член суммы на \(\frac{P(\tau;\theta)}{P(\tau;\theta)}\) (это допустимо, поскольку отношение равно 1).
+
+\(= \sum_{\tau} \frac{P(\tau;\theta)}{P(\tau;\theta)}\nabla_\theta P(\tau;\theta)R(\tau)\)
+
+Далее упростим выражение, так как \(\frac{P(\tau;\theta)}{P(\tau;\theta)}\nabla_\theta P(\tau;\theta) =  P(\tau;\theta)\frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}\).
+
+Поэтому сумму можно переписать следующим образом:
+
+\(P(\tau;\theta)\frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}= \sum_{\tau} P(\tau;\theta) \frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}R(\tau)\)
+
+Теперь воспользуемся \emph{трюком с производной логарифма} (derivative log trick), который также называют \emph{трюком отношения правдоподобий} (likelihood ratio trick) или \emph{трюком REINFORCE}. Это простое правило анализа: \(\nabla_x log f(x) = \frac{\nabla_x f(x)}{f(x)}\).
+
+Поскольку в выражении присутствует \(\frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}\), заменим его на \(\nabla_\theta log P(\tau|\theta)\).
+
+Получаем градиент политики через правдоподобие:
+
+\(\nabla_\theta J(\theta) = \sum_{\tau} P(\tau;\theta)  \nabla_\theta log P(\tau;\theta) R(\tau)\)
+
+Благодаря новой формуле градиент можно оценивать по выборке траекторий (или, что то же самое, выборочно аппроксимировать градиент через отношение правдоподобий).
+
+\(\nabla_\theta J(\theta) = \frac{1}{m} \sum^{m}_{i=1} \nabla_\theta log P(\tau^{(i)};\theta)R(\tau^{(i)})\), где каждая \(\tau^{(i)}\) --- выбранная из данных траектория.
+
+Но математические преобразования ещё не закончены: требуется упростить \(\nabla_\theta log P(\tau|\theta)\).
+
+Мы знаем, что:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)= \nabla_\theta log[ \mu(s_0) \prod_{t=0}^{H} P(s_{t+1}^{(i)}|s_{t}^{(i)}, a_{t}^{(i)}) \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})]\)
+
+Здесь \(\mu(s_0)\) --- распределение начальных состояний, а \(P(s_{t+1}^{(i)}|s_{t}^{(i)}, a_{t}^{(i)})\) --- динамика переходов MDP.
+
+Логарифм произведения равен сумме логарифмов:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)= \nabla_\theta \left[log \mu(s_0) + \sum\limits_{t=0}^{H}log P(s_{t+1}^{(i)}|s_{t}^{(i)} a_{t}^{(i)}) + \sum\limits_{t=0}^{H}log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\right]\)
+
+Кроме того, градиент суммы равен сумме градиентов:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)=\nabla_\theta log\mu(s_0) + \nabla_\theta \sum\limits_{t=0}^{H} log P(s_{t+1}^{(i)}|s_{t}^{(i)} a_{t}^{(i)}) + \nabla_\theta \sum\limits_{t=0}^{H} log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\)
+
+Поскольку ни распределение начальных состояний, ни динамика переходов MDP не зависят от \(\theta\), производные обоих слагаемых равны нулю. Поэтому их можно убрать:
+
+Поскольку \(\nabla_\theta \sum_{t=0}^{H} log P(s_{t+1}^{(i)}|s_{t}^{(i)}  a_{t}^{(i)}) = 0\) и \(\nabla_\theta \mu(s_0) = 0\).
+
+\(\nabla_\theta log P(\tau^{(i)};\theta) =   \nabla_\theta \sum_{t=0}^{H} log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\)
+
+Градиент суммы вновь перепишем как сумму градиентов:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)=    \sum_{t=0}^{H} \nabla_\theta log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\)
+
+Итак, окончательная формула оценки градиента политики:
+
+\(\nabla_{\theta} J(\theta) = \hat{g} = \frac{1}{m} \sum^{m}_{i=1} \sum^{H}_{t=0} \nabla_\theta \log \pi_\theta(a^{(i)}_{t} | s_{t}^{(i)})R(\tau^{(i)})\)
+
+\section{Практическое занятие}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit4/unit4.ipynb}{Официальный ноутбук модуля 4 (Google Colab)}
+
+\href{http://hf.co/join/discord}{Помощь по курсу / Discord}
+
+Теперь мы изучили теорию REINFORCE. \textbf{Пора реализовать агента на PyTorch} и проверить устойчивость его работы в CartPole-v1 и PixelCopter.
+
+После этого ты сможешь самостоятельно доработать реализацию для более сложных сред.
+
+\CourseFigure{envs.png}{Среды CartPole и PixelCopter (статичный кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/envs.gif}{[оригинал]}}
+
+Для зачёта практического задания в системе сертификации необходимо загрузить обученные модели в Hub и:
+
+\begin{itemize}
+\tightlist
+\item
+  Получить результат \(\geq 350\) в \texttt{Cartpole-v1}.
+\item
+  Получить результат \(\geq 5\) в \texttt{PixelCopter}.
+\end{itemize}
+
+Чтобы узнать результат, открой таблицу лидеров и найди свою модель: \textbf{результат = mean\_reward - std награды}. \textbf{Если модель не отображается, перейди в конец страницы таблицы лидеров и нажми кнопку обновления}.
+
+\textbf{Если модель не нашлась, прокрути страницу вниз и нажми кнопку обновления.}
+
+Подробнее о сертификации читай в \href{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}{соответствующем разделе курса}.
+
+Проверить свой прогресс можно здесь: \url{https://huggingface.co/spaces/ThomasSimonini/Check-my-progress-Deep-RL-Course}.
+
+\textbf{Чтобы начать практику, нажми кнопку Open In Colab}:
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit4/unit4.ipynb}{Открыть в Colab}
+
+Мы настоятельно \textbf{рекомендуем студентам выполнять практические задания в Google Colab}, а не на личных компьютерах.
+
+Используя Google Colab, \textbf{можно сосредоточиться на обучении и экспериментах, не отвлекаясь на технические детали} настройки окружений.
+
+\subsection{Модуль 4: напиши первый алгоритм глубокого RL на PyTorch --- REINFORCE --- и проверь его устойчивость}\label{unit-4-code-your-first-deep-reinforcement-learning-algorithm-with-pytorch-reinforce.-and-test-its-robustness}
+
+\CourseFigure{thumbnail.png}{Обложка модуля 4: градиент политики и REINFORCE \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/thumbnail.png}{[оригинал]}}
+
+В этом ноутбуке ты с нуля запрограммируешь свой первый алгоритм глубокого обучения с подкреплением --- REINFORCE (его также называют градиентом политики Монте-Карло).
+
+REINFORCE относится к \emph{методам на основе политики}: он пытается \textbf{непосредственно оптимизировать политику без использования функции ценности действий}.
+
+Точнее, REINFORCE --- это \emph{метод градиента политики}, подкласс методов на основе политики. Его цель --- \textbf{напрямую оптимизировать политику, оценивая веса оптимальной политики с помощью градиентного подъёма}.
+
+Чтобы проверить устойчивость алгоритма, обучим его в двух разных простых средах:
+
+\begin{itemize}
+\tightlist
+\item
+  Cartpole-v1.
+\item
+  PixelcopterEnv.
+\end{itemize}
+
+Вот пример того, \textbf{что ты получишь к концу этого ноутбука.}
+
+\CourseFigure{envs.png}{Среды CartPole и PixelCopter (статичный кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/envs.gif}{[оригинал]}}
+
+\paragraph{Среды:}\label{environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://www.gymlibrary.dev/environments/classic_control/cart_pole/}{CartPole-v1}
+\item
+  \href{https://pygame-learning-environment.readthedocs.io/en/latest/user/games/pixelcopter.html}{PixelCopter}
+\end{itemize}
+
+\paragraph{Библиотеки RL:}\label{rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  Python
+\item
+  PyTorch
+\end{itemize}
+
+Мы постоянно улучшаем наши учебные материалы. Поэтому \textbf{если заметишь проблемы в этом ноутбуке}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создай issue в репозитории GitHub}.
+
+\subsubsection{Цели ноутбука}\label{objectives-of-this-notebook}
+
+После выполнения ноутбука ты сможешь:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Написать алгоритм REINFORCE с нуля на PyTorch.}
+\item
+  \textbf{Проверить устойчивость агента в простых средах.}
+\item
+  \textbf{Опубликовать обученного агента в Hugging Face Hub} вместе с видеозаписью и результатами оценки.
+\end{itemize}
+
+\subsubsection{Предварительные требования}\label{prerequisites}
+
+Прежде чем приступать к ноутбуку, необходимо:
+
+\href{https://huggingface.co/deep-rl-course/unit4/introduction}{Изучить градиенты политики в модуле 4}.
+
+\subsection{Реализуем REINFORCE с нуля}\label{lets-code-reinforce-algorithm-from-scratch}
+
+\subsubsection{Несколько советов}\label{some-advice-tip}
+
+Лучше выполнять этот ноутбук в копии на своём Google Диске. Тогда, \textbf{если сеанс Colab завершится по тайм-ауту}, сохранённый ноутбук останется на Google Диске и не придётся начинать всё сначала.
+
+Для этого нажми \texttt{Ctrl\ +\ S} или выбери \texttt{File\ \textgreater{}\ Save\ a\ copy\ in\ Google\ Drive}.
+
+\subsubsection{Подключаем GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Чтобы \textbf{ускорить обучение агента, используем GPU}. Для этого выбери \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Выбор режима выполнения Colab: первый шаг \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}.
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Выбор аппаратного ускорителя GPU в Colab \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+\subsubsection{Создаём виртуальный дисплей}\label{create-a-virtual-display}
+
+Во время работы с ноутбуком нам понадобится создавать видеозаписи прохождений. Для этого в Colab \textbf{нужен виртуальный экран, позволяющий отображать среду} (и сохранять её кадры).
+
+Следующая ячейка установит библиотеки, создаст виртуальный экран и запустит его.
+
+\begin{lstlisting}
+%%capture
+!apt install python-opengl
+!apt install ffmpeg
+!apt install xvfb
+!pip install pyvirtualdisplay
+!pip install pyglet==1.5.1
+\end{lstlisting}
+
+\begin{lstlisting}
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsubsection{Устанавливаем зависимости}\label{install-the-dependencies}
+
+Сначала установим необходимые зависимости. Их несколько:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{gym}.
+\item
+  \texttt{gym-games}: дополнительные среды Gym, созданные с помощью PyGame.
+\item
+  \texttt{huggingface\_hub}: Hub --- центральная площадка, на которой можно публиковать и изучать модели и датасеты. Здесь есть версионирование, метрики, визуализации и другие возможности для совместной работы.
+\end{itemize}
+
+Возможно, ты удивляешься, почему мы устанавливаем Gym, а не более новую Gymnasium. \textbf{Потому что используемая нами библиотека gym-games ещё не была адаптирована для Gymnasium}.
+
+Основные различия, с которыми ты столкнёшься:
+
+\begin{itemize}
+\tightlist
+\item
+  В \texttt{gym} вместо отдельных флагов \texttt{terminated} и \texttt{truncated} используется единственный флаг \texttt{done}.
+\item
+  В \texttt{gym} вызов \texttt{env.step()} возвращает \texttt{state,\ reward,\ done,\ info}.
+\end{itemize}
+
+Подробнее о различиях Gym и Gymnasium можно узнать здесь: \url{https://gymnasium.farama.org/content/migration-guide/}.
+
+Все доступные модели REINFORCE можно посмотреть здесь: \url{https://huggingface.co/models?other=reinforce}.
+
+А все модели глубокого обучения с подкреплением --- здесь: \url{https://huggingface.co/models?pipeline_tag=reinforcement-learning}.
+
+\begin{lstlisting}
+!pip install -r https://raw.githubusercontent.com/huggingface/deep-rl-class/main/notebooks/unit4/requirements-unit4.txt
+\end{lstlisting}
+
+\subsubsection{Импортируем пакеты}\label{import-the-packages}
+
+Помимо установленных библиотек, мы импортируем:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{imageio}: библиотеку, которая поможет создать видеозапись прохождения.
+\end{itemize}
+
+\begin{lstlisting}
+import numpy as np
+
+from collections import deque
+
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+# PyTorch
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.distributions import Categorical
+
+# Gym
+import gym
+import gym_pygame
+
+# Hugging Face Hub
+from huggingface_hub import notebook_login # To log to our Hugging Face account to be able to upload models to the Hub.
+import imageio
+\end{lstlisting}
+
+\subsubsection{Проверяем наличие GPU}\label{check-if-we-have-a-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Проверим, доступен ли GPU.
+\item
+  Если да, ты увидишь \texttt{device:cuda0}.
+\end{itemize}
+
+\begin{lstlisting}
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+\end{lstlisting}
+
+\begin{lstlisting}
+print(device)
+\end{lstlisting}
+
+Теперь всё готово для реализации алгоритма REINFORCE.
+
+\subsection{Первый агент: играем в CartPole-v1}\label{first-agent-playing-cartpole-v1}
+
+\subsubsection{Создаём среду CartPole и разбираемся в её работе}\label{create-the-cartpole-environment-and-understand-how-it-works}
+
+\paragraph{\texorpdfstring{\href{https://www.gymlibrary.dev/environments/classic_control/cart_pole/}{Среда}}{Среда}}\label{the-environment}
+
+\paragraph{Почему мы используем простую среду вроде CartPole-v1?}\label{why-do-we-use-a-simple-environment-like-cartpole-v1}
+
+Как объясняется в \href{https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html}{советах по RL}, когда реализуешь агента с нуля, нужно \textbf{сначала убедиться, что он работает правильно, и отладить его в простых средах}. Так намного легче искать ошибки, прежде чем переходить к сложным задачам.
+
+\begin{quote}
+Попробуй получить хотя бы какие-то «признаки жизни» на игрушечных задачах.
+\end{quote}
+
+\begin{quote}
+Проверяй реализацию, запуская её во всё более сложных средах (результаты можно сравнивать с RL Zoo). На этом этапе обычно приходится подбирать гиперпараметры.
+\end{quote}
+
+\paragraph{Среда CartPole-v1}\label{the-cartpole-v1-environment}
+
+\begin{quote}
+К тележке, движущейся по рельсу без трения, через неуправляемый шарнир прикреплён шест. В начале шест расположен вертикально. Задача --- удерживать его в равновесии, прикладывая к тележке силы влево или вправо.
+\end{quote}
+
+Итак, начинаем с CartPole-v1. Нужно перемещать тележку влево или вправо \textbf{так, чтобы шест не падал и оставался в равновесии}.
+
+Эпизод заканчивается, если:
+
+\begin{itemize}
+\tightlist
+\item
+  Угол отклонения шеста превышает \(\pm12^{\circ}\).
+\item
+  Координата тележки выходит за пределы \(\pm2{,}4\).
+\item
+  Длительность эпизода превышает 500 шагов.
+\end{itemize}
+
+На каждом шаге, пока шест удерживается в равновесии, агент получает награду +1.
+
+\begin{lstlisting}
+env_id = "CartPole-v1"
+# Create the env
+env = gym.make(env_id)
+
+# Create the evaluation env
+eval_env = gym.make(env_id)
+
+# Get the state space and action space
+s_size = env.observation_space.shape[0]
+a_size = env.action_space.n
+\end{lstlisting}
+
+\begin{lstlisting}
+print("_____OBSERVATION SPACE_____ \n")
+print("The State Space is: ", s_size)
+print("Sample observation", env.observation_space.sample())  # Get a random observation
+\end{lstlisting}
+
+\begin{lstlisting}
+print("\n _____ACTION SPACE_____ \n")
+print("The Action Space is: ", a_size)
+print("Action Space Sample", env.action_space.sample())  # Take a random action
+\end{lstlisting}
+
+\subsubsection{Построим архитектуру REINFORCE}\label{lets-build-the-reinforce-architecture}
+
+Эта реализация основана на трёх примерах:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/pytorch/examples/blob/main/reinforcement_learning/reinforce.py}{Официальный пример RL от PyTorch}.
+\item
+  \href{https://github.com/udacity/deep-reinforcement-learning/blob/master/reinforce/REINFORCE.ipynb}{REINFORCE от Udacity}.
+\item
+  \href{https://github.com/huggingface/deep-rl-class/pull/95}{Улучшение интеграции от Chris1nexus}.
+\end{itemize}
+
+\CourseFigure{reinforce.png}{Архитектура нейросети политики REINFORCE \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/reinforce.png}{[оригинал]}}
+
+Итак, нам нужно:
+
+\begin{itemize}
+\tightlist
+\item
+  Два полносвязных слоя (fc1 и fc2).
+\item
+  Использовать ReLU в качестве функции активации слоя fc1.
+\item
+  Использовать Softmax, чтобы получить распределение вероятностей действий на выходе.
+\end{itemize}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        # Create two fully connected layers
+
+
+
+    def forward(self, x):
+        # Define the forward pass
+        # state goes to fc1 then we apply ReLU activation function
+
+        # fc1 outputs goes to fc2
+
+        # We output the softmax
+
+    def act(self, state):
+        """
+        Given a state, take action
+        """
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = np.argmax(m)
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+\paragraph{Решение}\label{solution}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, a_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = np.argmax(m)
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+Я допустил ошибку. Сможешь догадаться, где именно?
+
+\begin{itemize}
+\tightlist
+\item
+  Чтобы выяснить это, выполним прямой проход сети:
+\end{itemize}
+
+\begin{lstlisting}
+debug_policy = Policy(s_size, a_size, 64).to(device)
+debug_policy.act(env.reset())
+\end{lstlisting}
+
+\begin{itemize}
+\item
+  Как видно, появляется ошибка \texttt{ValueError:\ The\ value\ argument\ to\ log\_prob\ must\ be\ a\ Tensor}.
+\item
+  Она означает, что \texttt{action} при вызове \texttt{m.log\_prob(action)} должен быть тензором (Tensor), \textbf{но это не так}.
+\item
+  Почему так происходит? Посмотри на функцию act и попробуй понять, почему она не работает.
+\end{itemize}
+
+Совет: в этой реализации есть ошибка. Помни, что функция act должна \textbf{выбирать случайное действие из распределения вероятностей действий}.
+
+\paragraph{Настоящее решение}\label{real-solution}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, a_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+Использование CartPole облегчило отладку, поскольку \textbf{мы знаем, что ошибка вызвана нашей реализацией, а не простой средой}.
+
+\begin{itemize}
+\item
+  Поскольку \textbf{мы хотим выбирать действие из распределения вероятностей}, нельзя использовать \texttt{action\ =\ np.argmax(m)}: этот вызов всегда возвращает действие с наибольшей вероятностью.
+\item
+  Нужно заменить его на \texttt{action\ =\ m.sample()}, который выбирает действие случайным образом согласно распределению \(P(\cdot\mid s)\).
+\end{itemize}
+
+\paragraph{Реализуем алгоритм обучения REINFORCE}\label{lets-build-the-reinforce-training-algorithm}
+
+Псевдокод алгоритма REINFORCE:
+
+\CourseFigure{pg_pseudocode.png}{Псевдокод алгоритма REINFORCE \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/pg_pseudocode.png}{[оригинал]}}
+
+\begin{itemize}
+\item
+  При вычислении отдачи \(G_t\) (строка 6) видно, что мы суммируем дисконтированные награды, \textbf{начиная с момента времени \(t\)}.
+\item
+  Почему? Потому что политика должна \textbf{усиливать действия на основании их последствий}: награды, полученные до действия, не имеют значения (они не вызваны этим действием), \textbf{важны только последующие награды}.
+\item
+  Перед реализацией прочитай раздел \href{https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html\#don-t-let-the-past-distract-you}{«Не позволяй прошлому отвлекать тебя»}, где объясняется использование градиента политики на основе будущих наград (reward-to-go).
+\end{itemize}
+
+Мы используем интересный приём, предложенный \href{https://github.com/Chris1nexus}{Chris1nexus}, чтобы \textbf{эффективно вычислять отдачу на каждом временном шаге}. Процедура объяснена в комментариях к коду. Также можно \href{https://github.com/huggingface/deep-rl-class/pull/95}{прочитать пояснения к PR}. Главная идея --- \textbf{вычислять отдачу для каждого шага без лишних затрат}.
+
+Второй вопрос, который может возникнуть: \textbf{почему мы минимизируем функцию потерь}? Разве ранее мы не говорили о градиентном подъёме, а не о спуске?
+
+\begin{itemize}
+\tightlist
+\item
+  Нам нужно максимизировать функцию полезности \(J(\theta)\), но в PyTorch и TensorFlow удобнее \textbf{минимизировать целевую функцию}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Допустим, на некотором шаге мы хотим усилить действие 3. До обучения его вероятность равна 0,25.
+  \item
+    Нужно изменить \(\theta\) так, чтобы \(\pi_\theta(a_3|s; \theta) > 0.25\).
+  \item
+    Поскольку сумма всех вероятностей равна 1, максимизация \(\pi_\theta(a_3|s; \theta)\) будет \textbf{уменьшать вероятности других действий}.
+  \item
+    Поэтому нужно указать PyTorch \textbf{минимизировать \(1 - \pi_\theta(a_3|s; \theta)\)}.
+  \item
+    Такая функция потерь стремится к нулю при приближении \(\pi_\theta(a_3|s; \theta)\) к 1.
+  \item
+    Тем самым мы направляем градиент на увеличение \(\pi_\theta(a_3|s; \theta)\).
+  \end{itemize}
+\end{itemize}
+
+\begin{lstlisting}
+def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every):
+    # Help us to calculate the score during the training
+    scores_deque = deque(maxlen=100)
+    scores = []
+    # Line 3 of pseudocode
+    for i_episode in range(1, n_training_episodes+1):
+        saved_log_probs = []
+        rewards = []
+        state = # TODO: reset the environment
+        # Line 4 of pseudocode
+        for t in range(max_t):
+            action, log_prob = # TODO get the action
+            saved_log_probs.append(log_prob)
+            state, reward, done, _ = # TODO: take an env step
+            rewards.append(reward)
+            if done:
+                break
+        scores_deque.append(sum(rewards))
+        scores.append(sum(rewards))
+
+        # Line 6 of pseudocode: calculate the return
+        returns = deque(maxlen=max_t)
+        n_steps = len(rewards)
+        # Compute the discounted returns at each timestep,
+        # as the sum of the gamma-discounted return at time t (G_t) + the reward at time t
+
+        # In O(N) time, where N is the number of time steps
+        # (this definition of the discounted return G_t follows the definition of this quantity
+        # shown at page 44 of Sutton&Barto 2017 2nd draft)
+        # G_t = r_(t+1) + r_(t+2) + ...
+
+        # Given this formulation, the returns at each timestep t can be computed
+        # by re-using the computed future returns G_(t+1) to compute the current return G_t
+        # G_t = r_(t+1) + gamma*G_(t+1)
+        # G_(t-1) = r_t + gamma* G_t
+        # (this follows a dynamic programming approach, with which we memorize solutions in order
+        # to avoid computing them multiple times)
+
+        # This is correct since the above is equivalent to (see also page 46 of Sutton&Barto 2017 2nd draft)
+        # G_(t-1) = r_t + gamma*r_(t+1) + gamma*gamma*r_(t+2) + ...
+
+
+        ## Given the above, we calculate the returns at timestep t as:
+        #               gamma[t] * return[t] + reward[t]
+        #
+        ## We compute this starting from the last timestep to the first, in order
+        ## to employ the formula presented above and avoid redundant computations that would be needed
+        ## if we were to do it from first to last.
+
+        ## Hence, the queue "returns" will hold the returns in chronological order, from t=0 to t=n_steps
+        ## thanks to the appendleft() function which allows to append to the position 0 in constant time O(1)
+        ## a normal python list would instead require O(N) to do this.
+        for t in range(n_steps)[::-1]:
+            disc_return_t = (returns[0] if len(returns)>0 else 0)
+            returns.appendleft(    ) # TODO: complete here
+
+        ## standardization of the returns is employed to make training more stable
+        eps = np.finfo(np.float32).eps.item()
+
+        ## eps is the smallest representable float, which is
+        # added to the standard deviation of the returns to avoid numerical instabilities
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + eps)
+
+        # Line 7:
+        policy_loss = []
+        for log_prob, disc_return in zip(saved_log_probs, returns):
+            policy_loss.append(-log_prob * disc_return)
+        policy_loss = torch.cat(policy_loss).sum()
+
+        # Line 8: PyTorch prefers gradient descent
+        optimizer.zero_grad()
+        policy_loss.backward()
+        optimizer.step()
+
+        if i_episode % print_every == 0:
+            print('Episode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_deque)))
+
+    return scores
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution-1}
+
+\begin{lstlisting}
+def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every):
+    # Help us to calculate the score during the training
+    scores_deque = deque(maxlen=100)
+    scores = []
+    # Line 3 of pseudocode
+    for i_episode in range(1, n_training_episodes + 1):
+        saved_log_probs = []
+        rewards = []
+        state = env.reset()
+        # Line 4 of pseudocode
+        for t in range(max_t):
+            action, log_prob = policy.act(state)
+            saved_log_probs.append(log_prob)
+            state, reward, done, _ = env.step(action)
+            rewards.append(reward)
+            if done:
+                break
+        scores_deque.append(sum(rewards))
+        scores.append(sum(rewards))
+
+        # Line 6 of pseudocode: calculate the return
+        returns = deque(maxlen=max_t)
+        n_steps = len(rewards)
+        # Compute the discounted returns at each timestep,
+        # as
+        #      the sum of the gamma-discounted return at time t (G_t) + the reward at time t
+        #
+        # In O(N) time, where N is the number of time steps
+        # (this definition of the discounted return G_t follows the definition of this quantity
+        # shown at page 44 of Sutton&Barto 2017 2nd draft)
+        # G_t = r_(t+1) + r_(t+2) + ...
+
+        # Given this formulation, the returns at each timestep t can be computed
+        # by re-using the computed future returns G_(t+1) to compute the current return G_t
+        # G_t = r_(t+1) + gamma*G_(t+1)
+        # G_(t-1) = r_t + gamma* G_t
+        # (this follows a dynamic programming approach, with which we memorize solutions in order
+        # to avoid computing them multiple times)
+
+        # This is correct since the above is equivalent to (see also page 46 of Sutton&Barto 2017 2nd draft)
+        # G_(t-1) = r_t + gamma*r_(t+1) + gamma*gamma*r_(t+2) + ...
+
+        ## Given the above, we calculate the returns at timestep t as:
+        #               gamma[t] * return[t] + reward[t]
+        #
+        ## We compute this starting from the last timestep to the first, in order
+        ## to employ the formula presented above and avoid redundant computations that would be needed
+        ## if we were to do it from first to last.
+
+        ## Hence, the queue "returns" will hold the returns in chronological order, from t=0 to t=n_steps
+        ## thanks to the appendleft() function which allows to append to the position 0 in constant time O(1)
+        ## a normal python list would instead require O(N) to do this.
+        for t in range(n_steps)[::-1]:
+            disc_return_t = returns[0] if len(returns) > 0 else 0
+            returns.appendleft(gamma * disc_return_t + rewards[t])
+
+        ## standardization of the returns is employed to make training more stable
+        eps = np.finfo(np.float32).eps.item()
+        ## eps is the smallest representable float, which is
+        # added to the standard deviation of the returns to avoid numerical instabilities
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + eps)
+
+        # Line 7:
+        policy_loss = []
+        for log_prob, disc_return in zip(saved_log_probs, returns):
+            policy_loss.append(-log_prob * disc_return)
+        policy_loss = torch.cat(policy_loss).sum()
+
+        # Line 8: PyTorch prefers gradient descent
+        optimizer.zero_grad()
+        policy_loss.backward()
+        optimizer.step()
+
+        if i_episode % print_every == 0:
+            print("Episode {}\tAverage Score: {:.2f}".format(i_episode, np.mean(scores_deque)))
+
+    return scores
+\end{lstlisting}
+
+\subsubsection{Обучаем агента}\label{train-it}
+
+\begin{itemize}
+\tightlist
+\item
+  Теперь всё готово к обучению агента.
+\item
+  Но сначала зададим переменную, содержащую все гиперпараметры обучения.
+\item
+  Ты можешь (и даже должен) изменять параметры обучения.
+\end{itemize}
+
+\begin{lstlisting}
+cartpole_hyperparameters = {
+    "h_size": 16,
+    "n_training_episodes": 1000,
+    "n_evaluation_episodes": 10,
+    "max_t": 1000,
+    "gamma": 1.0,
+    "lr": 1e-2,
+    "env_id": env_id,
+    "state_space": s_size,
+    "action_space": a_size,
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+# Create policy and place it to the device
+cartpole_policy = Policy(
+    cartpole_hyperparameters["state_space"],
+    cartpole_hyperparameters["action_space"],
+    cartpole_hyperparameters["h_size"],
+).to(device)
+cartpole_optimizer = optim.Adam(cartpole_policy.parameters(), lr=cartpole_hyperparameters["lr"])
+\end{lstlisting}
+
+\begin{lstlisting}
+scores = reinforce(
+    cartpole_policy,
+    cartpole_optimizer,
+    cartpole_hyperparameters["n_training_episodes"],
+    cartpole_hyperparameters["max_t"],
+    cartpole_hyperparameters["gamma"],
+    100,
+)
+\end{lstlisting}
+
+\subsubsection{Определяем метод оценки}\label{define-evaluation-method}
+
+\begin{itemize}
+\tightlist
+\item
+  Здесь мы определим метод оценки, с помощью которого будем тестировать нашего агента REINFORCE.
+\end{itemize}
+
+\begin{lstlisting}
+def evaluate_agent(env, max_steps, n_eval_episodes, policy):
+    """
+    Evaluate the agent for ``n_eval_episodes`` episodes and returns average reward and std of reward.
+    :param env: The evaluation environment
+    :param n_eval_episodes: Number of episode to evaluate the agent
+    :param policy: The Reinforce agent
+    """
+    episode_rewards = []
+    for episode in range(n_eval_episodes):
+        state = env.reset()
+        step = 0
+        done = False
+        total_rewards_ep = 0
+
+        for step in range(max_steps):
+            action, _ = policy.act(state)
+            new_state, reward, done, info = env.step(action)
+            total_rewards_ep += reward
+
+            if done:
+                break
+            state = new_state
+        episode_rewards.append(total_rewards_ep)
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+
+    return mean_reward, std_reward
+\end{lstlisting}
+
+\subsubsection{Оцениваем работу агента}\label{evaluate-our-agent}
+
+\begin{lstlisting}
+evaluate_agent(
+    eval_env, cartpole_hyperparameters["max_t"], cartpole_hyperparameters["n_evaluation_episodes"], cartpole_policy
+)
+\end{lstlisting}
+
+\paragraph{Публикуем обученную модель на Hub}\label{publish-our-trained-model-on-the-hub}
+
+Теперь, убедившись, что обучение дало хорошие результаты, мы можем опубликовать обученную модель на Hub одной строкой кода.
+
+Вот пример карточки модели (Model Card):
+
+\CourseFigure{modelcard.png}{Интерфейс карточки модели в Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/modelcard.png}{[оригинал]}}
+
+\paragraph{Загружаем модель на Hub}\label{push-to-the-hub}
+
+\subparagraph{Не изменяй этот код}\label{do-not-modify-this-code}
+
+\begin{lstlisting}
+from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub.repocard import metadata_eval_result, metadata_save
+
+from pathlib import Path
+import datetime
+import json
+import imageio
+
+import tempfile
+
+import os
+\end{lstlisting}
+
+\begin{lstlisting}
+def record_video(env, policy, out_directory, fps=30):
+    """
+    Generate a replay video of the agent
+    :param env
+    :param Qtable: Qtable of our agent
+    :param out_directory
+    :param fps: how many frame per seconds (with taxi-v3 and frozenlake-v1 we use 1)
+    """
+    images = []
+    done = False
+    state = env.reset()
+    img = env.render(mode="rgb_array")
+    images.append(img)
+    while not done:
+        # Take the action (index) that have the maximum expected future reward given that state
+        action, _ = policy.act(state)
+        state, reward, done, info = env.step(action)  # We directly put next_state = state for recording logic
+        img = env.render(mode="rgb_array")
+        images.append(img)
+    imageio.mimsave(out_directory, [np.array(img) for i, img in enumerate(images)], fps=fps)
+\end{lstlisting}
+
+\begin{lstlisting}
+def push_to_hub(repo_id,
+                model,
+                hyperparameters,
+                eval_env,
+                video_fps=30
+                ):
+  """
+  Evaluate, Generate a video and Upload a model to Hugging Face Hub.
+  This method does the complete pipeline:
+  - It evaluates the model
+  - It generates the model card
+  - It generates a replay video of the agent
+  - It pushes everything to the Hub
+
+  :param repo_id: repo_id: id of the model repository from the Hugging Face Hub
+  :param model: the pytorch model we want to save
+  :param hyperparameters: training hyperparameters
+  :param eval_env: evaluation environment
+  :param video_fps: how many frame per seconds to record our video replay
+  """
+
+  _, repo_name = repo_id.split("/")
+  api = HfApi()
+
+  # Step 1: Create the repo
+  repo_url = api.create_repo(
+        repo_id=repo_id,
+        exist_ok=True,
+  )
+
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    local_directory = Path(tmpdirname)
+
+    # Step 2: Save the model
+    torch.save(model, local_directory / "model.pt")
+
+    # Step 3: Save the hyperparameters to JSON
+    with open(local_directory / "hyperparameters.json", "w") as outfile:
+      json.dump(hyperparameters, outfile)
+
+    # Step 4: Evaluate the model and build JSON
+    mean_reward, std_reward = evaluate_agent(eval_env,
+                                            hyperparameters["max_t"],
+                                            hyperparameters["n_evaluation_episodes"],
+                                            model)
+    # Get datetime
+    eval_datetime = datetime.datetime.now()
+    eval_form_datetime = eval_datetime.isoformat()
+
+    evaluate_data = {
+          "env_id": hyperparameters["env_id"],
+          "mean_reward": mean_reward,
+          "n_evaluation_episodes": hyperparameters["n_evaluation_episodes"],
+          "eval_datetime": eval_form_datetime,
+    }
+
+    # Write a JSON file
+    with open(local_directory / "results.json", "w") as outfile:
+        json.dump(evaluate_data, outfile)
+
+    # Step 5: Create the model card
+    env_name = hyperparameters["env_id"]
+
+    metadata = {}
+    metadata["tags"] = [
+          env_name,
+          "reinforce",
+          "reinforcement-learning",
+          "custom-implementation",
+          "deep-rl-class"
+      ]
+
+    # Add metrics
+    eval = metadata_eval_result(
+        model_pretty_name=repo_name,
+        task_pretty_name="reinforcement-learning",
+        task_id="reinforcement-learning",
+        metrics_pretty_name="mean_reward",
+        metrics_id="mean_reward",
+        metrics_value=f"{mean_reward:.2f} +/- {std_reward:.2f}",
+        dataset_pretty_name=env_name,
+        dataset_id=env_name,
+      )
+
+    # Merges both dictionaries
+    metadata = {**metadata, **eval}
+
+    model_card = f"""
+  # **Reinforce** Agent playing **{env_id}**
+  This is a trained model of a **Reinforce** agent playing **{env_id}** .
+  To learn to use this model and train yours check Unit 4 of the Deep Reinforcement Learning Course: https://huggingface.co/deep-rl-course/unit4/introduction
+  """
+
+    readme_path = local_directory / "README.md"
+    readme = ""
+    if readme_path.exists():
+        with readme_path.open("r", encoding="utf8") as f:
+          readme = f.read()
+    else:
+      readme = model_card
+
+    with readme_path.open("w", encoding="utf-8") as f:
+      f.write(readme)
+
+    # Save our metrics to Readme metadata
+    metadata_save(readme_path, metadata)
+
+    # Step 6: Record a video
+    video_path =  local_directory / "replay.mp4"
+    record_video(env, model, video_path, video_fps)
+
+    # Step 7. Push everything to the Hub
+    api.upload_folder(
+          repo_id=repo_id,
+          folder_path=local_directory,
+          path_in_repo=".",
+    )
+
+    print(f"Your model is pushed to the Hub. You can view your model here: {repo_url}")
+\end{lstlisting}
+
+С помощью \texttt{push\_to\_hub} \textbf{ты можешь оценить агента, записать видео его работы, создать карточку модели и загрузить её на Hub}.
+
+Таким образом:
+
+\begin{itemize}
+\tightlist
+\item
+  Ты сможешь \textbf{показать результаты своей работы}.
+\item
+  Ты сможешь \textbf{посмотреть, как играет твой агент}.
+\item
+  Ты сможешь \textbf{поделиться агентом с сообществом, чтобы другие тоже могли его использовать}.
+\item
+  Ты сможешь \textbf{открыть таблицу лидеров и сравнить качество работы своего агента с результатами однокурсников}: \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}.
+\end{itemize}
+
+Чтобы поделиться моделью с сообществом, осталось выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если учётной записи Hugging Face пока нет, создай её: \url{https://huggingface.co/join}.
+\item
+  Войди в аккаунт, затем сохрани токен аутентификации с сайта Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Создай новый токен на странице \url{https://huggingface.co/settings/tokens} \textbf{с правами записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена доступа Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{lstlisting}
+notebook_login()
+\end{lstlisting}
+
+Если ты не используешь Google Colab или Jupyter Notebook, вместо этого выполни команду \texttt{huggingface-cli\ login} (или \texttt{login}).
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Теперь мы готовы отправить обученного агента в Hub. Для этого используем функцию \texttt{package\_to\_hub()}.
+\end{enumerate}
+
+\begin{lstlisting}
+repo_id = ""  # TODO Define your repo id {username/Reinforce-{model-id}}
+push_to_hub(
+    repo_id,
+    cartpole_policy,  # The model we want to save
+    cartpole_hyperparameters,  # Hyperparameters
+    eval_env,  # Evaluation environment
+    video_fps=30
+)
+\end{lstlisting}
+
+Проверив устойчивость нашей реализации, перейдём к более сложной среде --- PixelCopter.
+
+\subsubsection{Второй агент: PixelCopter}\label{second-agent-pixelcopter}
+
+\paragraph{Изучаем среду PixelCopter}\label{study-the-pixelcopter-environment}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://pygame-learning-environment.readthedocs.io/en/latest/user/games/pixelcopter.html}{Документация среды}.
+\end{itemize}
+
+\begin{lstlisting}
+env_id = "Pixelcopter-PLE-v0"
+env = gym.make(env_id)
+eval_env = gym.make(env_id)
+s_size = env.observation_space.shape[0]
+a_size = env.action_space.n
+\end{lstlisting}
+
+\begin{lstlisting}
+print("_____OBSERVATION SPACE_____ \n")
+print("The State Space is: ", s_size)
+print("Sample observation", env.observation_space.sample())  # Get a random observation
+\end{lstlisting}
+
+\begin{lstlisting}
+print("\n _____ACTION SPACE_____ \n")
+print("The Action Space is: ", a_size)
+print("Action Space Sample", env.action_space.sample())  # Take a random action
+\end{lstlisting}
+
+Пространство наблюдений (7 компонентов):
+
+\begin{itemize}
+\tightlist
+\item
+  Координата игрока по оси \(y\).
+\item
+  Скорость игрока.
+\item
+  Расстояние от игрока до пола.
+\item
+  Расстояние от игрока до потолка.
+\item
+  Расстояние по оси \(x\) от игрока до следующего препятствия.
+\item
+  Координата верхней границы следующего препятствия по оси \(y\).
+\item
+  Координата нижней границы следующего препятствия по оси \(y\).
+\end{itemize}
+
+Пространство действий (2 действия):
+
+\begin{itemize}
+\tightlist
+\item
+  Подняться вверх (нажать ускоритель).
+\item
+  Ничего не делать (не нажимать ускоритель).
+\end{itemize}
+
+Функция вознаграждения:
+
+\begin{itemize}
+\tightlist
+\item
+  За прохождение каждого вертикального препятствия агент получает положительную награду +1. При достижении терминального состояния он получает отрицательную награду -1.
+\end{itemize}
+
+\paragraph{Определяем новую политику}\label{define-the-new-policy}
+
+\begin{itemize}
+\tightlist
+\item
+  Нам нужна более глубокая нейронная сеть, поскольку среда стала сложнее.
+\end{itemize}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        # Define the three layers here
+
+    def forward(self, x):
+        # Define the forward process here
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution-2}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, h_size * 2)
+        self.fc3 = nn.Linear(h_size * 2, a_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+\paragraph{Задаём гиперпараметры}\label{define-the-hyperparameters}
+
+\begin{itemize}
+\tightlist
+\item
+  Потому что эта среда сложнее.
+\item
+  Особенно важно увеличить число нейронов в скрытых слоях.
+\end{itemize}
+
+\begin{lstlisting}
+pixelcopter_hyperparameters = {
+    "h_size": 64,
+    "n_training_episodes": 50000,
+    "n_evaluation_episodes": 10,
+    "max_t": 10000,
+    "gamma": 0.99,
+    "lr": 1e-4,
+    "env_id": env_id,
+    "state_space": s_size,
+    "action_space": a_size,
+}
+\end{lstlisting}
+
+\paragraph{Обучаем агента}\label{train-it-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Теперь всё готово для обучения агента.
+\end{itemize}
+
+\begin{lstlisting}
+# Create policy and place it to the device
+# torch.manual_seed(50)
+pixelcopter_policy = Policy(
+    pixelcopter_hyperparameters["state_space"],
+    pixelcopter_hyperparameters["action_space"],
+    pixelcopter_hyperparameters["h_size"],
+).to(device)
+pixelcopter_optimizer = optim.Adam(pixelcopter_policy.parameters(), lr=pixelcopter_hyperparameters["lr"])
+\end{lstlisting}
+
+\begin{lstlisting}
+scores = reinforce(
+    pixelcopter_policy,
+    pixelcopter_optimizer,
+    pixelcopter_hyperparameters["n_training_episodes"],
+    pixelcopter_hyperparameters["max_t"],
+    pixelcopter_hyperparameters["gamma"],
+    1000,
+)
+\end{lstlisting}
+
+\paragraph{Публикуем обученную модель на Hub}\label{publish-our-trained-model-on-the-hub-1}
+
+\begin{lstlisting}
+repo_id = ""  # TODO Define your repo id {username/Reinforce-{model-id}}
+push_to_hub(
+    repo_id,
+    pixelcopter_policy,  # The model we want to save
+    pixelcopter_hyperparameters,  # Hyperparameters
+    eval_env,  # Evaluation environment
+    video_fps=30
+)
+\end{lstlisting}
+
+\subsubsection{Дополнительные задания}\label{some-additional-challenges}
+
+Лучший способ научиться --- \textbf{экспериментировать самостоятельно}! Как ты видел, сейчас агент играет не слишком хорошо. Для начала можно увеличить число шагов обучения. Но стоит также подобрать лучшие параметры.
+
+В \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров} можно найти своих агентов. Сможешь подняться на первое место?
+
+Вот несколько идей, которые помогут улучшить позицию в таблице лидеров:
+
+\begin{itemize}
+\tightlist
+\item
+  Обучай агент дольше.
+\item
+  Пробуй разные гиперпараметры, изучая эксперименты других участников: \url{https://huggingface.co/models?other=reinforce}.
+\item
+  \textbf{Загружай на Hub новые версии обученных моделей}.
+\item
+  \textbf{Улучши реализацию для более сложных сред}. Например, что будет, если заменить сеть на свёрточную нейронную сеть (CNN) для обработки изображений кадров в качестве наблюдений?
+\end{itemize}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\textbf{Поздравляем с завершением модуля}! Материала было немало. И поздравляем с окончанием практики: ты только что с нуля написал своего первого агента глубокого RL на PyTorch и опубликовал его на Hub.
+
+Не бойся продолжать эксперименты с этим модулем, \textbf{улучшая реализацию для более сложных сред}. Например, можно попробовать свёрточную нейронную сеть для обработки кадров-наблюдений.
+
+В следующем модуле мы \textbf{подробнее познакомимся с Unity ML-Agents}, обучая агентов в средах Unity. Это подготовит тебя к \textbf{соревнованиям AI vs AI, где агенты будут противостоять друг другу в снежной битве и футбольном матче}.
+
+Звучит интересно? До встречи в следующем модуле!
+
+Наконец, нам очень хотелось бы \textbf{услышать твоё мнение о курсе и о том, как его можно улучшить}. Если есть предложения, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполни эту форму}.
+
+До встречи в модуле 5!
+
+\paragraph{Продолжай учиться и оставайся молодцом}\label{keep-learning-stay-awesome}
+
+\section{Тест}\label{quiz}
+
+Лучший способ учиться и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{не поддаваться иллюзии компетентности} --- \textbf{проверять себя}. Так можно понять, \textbf{какие знания нужно закрепить}.
+
+\subsubsection{Вопрос 1. Каковы преимущества градиента политики перед методами на основе ценности? (Выбери все подходящие варианты)}\label{q1-what-are-the-advantages-of-policy-gradient-over-value-based-methods-check-all-that-apply}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Методы градиента политики могут обучать стохастическую политику.
+\item
+  \textbf{B.} Методы градиента политики эффективнее при высокой размерности пространства действий и в пространствах непрерывных действий.
+\item
+  \textbf{C.} Методы градиента политики чаще всего сходятся к глобальному максимуму.
+\end{itemize}
+
+\subsubsection{Вопрос 2. Что такое теорема о градиенте политики?}\label{q2-what-is-the-policy-gradient-theorem}
+
+\subsubsection{Вопрос 3. Чем отличаются методы на основе политики от методов градиента политики? (Выбери все подходящие варианты)}\label{q3-whats-the-difference-between-policy-based-methods-and-policy-gradient-methods-check-all-that-apply}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Методы на основе политики являются подмножеством методов градиента политики.
+\item
+  \textbf{B.} Методы градиента политики являются подмножеством методов на основе политики.
+\item
+  \textbf{C.} В методах на основе политики параметры \(\theta\) можно оптимизировать \textbf{косвенно}, максимизируя локальную аппроксимацию целевой функции методами восхождения на холм, имитации отжига или эволюционных стратегий.
+\item
+  \textbf{D.} В методах градиента политики параметры \(\theta\) оптимизируются \textbf{напрямую} с помощью градиентного подъёма целевой функции.
+\end{itemize}
+
+\subsubsection{\texorpdfstring{Вопрос 4. Почему для оптимизации \(J(\theta)\) используется градиентный подъём, а не спуск?}{Вопрос 4. Почему используется градиентный подъём, а не спуск?}}\label{q4-why-do-we-use-gradient-ascent-instead-of-gradient-descent-to-optimize-jtheta}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Мы хотим минимизировать \(J(\theta)\), а градиентный подъём задаёт направление наиболее быстрого увеличения \(J(\theta)\).
+\item
+  \textbf{B.} Мы хотим максимизировать \(J(\theta)\), а градиентный подъём задаёт направление наиболее быстрого увеличения \(J(\theta)\).
+\end{itemize}
+
+Поздравляем с завершением теста! Если в каких-то вопросах ошибся, перечитай соответствующие разделы, чтобы закрепить материал.
+
+\subsection{Ответы на тест и пояснения}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Ответ на вопрос 1}\label{q1-solution}
+
+\textbf{Правильные ответы:} A, B.
+
+\textbf{A.} Методы градиента политики могут обучать стохастическую политику.
+
+\textbf{B.} Методы градиента политики эффективнее при высокой размерности пространства действий и в пространствах непрерывных действий.
+
+\textbf{C.} Методы градиента политики чаще всего сходятся к глобальному максимуму. Пояснение: нет, часто градиент политики сходится к локальному максимуму, а не к глобальному оптимуму.
+
+\subsubsection{Ответ на вопрос 2}\label{q2-solution}
+
+\emph{Теорема о градиенте политики} позволяет преобразовать целевую функцию в дифференцируемое выражение, не требующее дифференцирования распределения состояний.
+
+\CourseFigure{policy_gradient_theorem.png}{Теорема о градиенте политики \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_theorem.png}{[оригинал]}}
+
+\subsubsection{Ответ на вопрос 3}\label{q3-solution}
+
+\textbf{Правильные ответы:} B, C, D.
+
+\textbf{A.} Методы на основе политики являются подмножеством методов градиента политики.
+
+\textbf{B.} Методы градиента политики являются подмножеством методов на основе политики.
+
+\textbf{C.} В методах на основе политики параметры \(\theta\) можно оптимизировать \textbf{косвенно}, максимизируя локальную аппроксимацию целевой функции методами восхождения на холм, имитации отжига или эволюционных стратегий.
+
+\textbf{D.} В методах градиента политики параметры \(\theta\) оптимизируются \textbf{напрямую} с помощью градиентного подъёма целевой функции.
+
+\subsubsection{Ответ на вопрос 4}\label{q4-solution}
+
+\textbf{Правильный ответ:} B.
+
+\textbf{A.} Мы хотим минимизировать \(J(\theta)\), а градиентный подъём задаёт направление наиболее быстрого увеличения \(J(\theta)\).
+
+\textbf{B.} Мы хотим максимизировать \(J(\theta)\), а градиентный подъём задаёт направление наиболее быстрого увеличения \(J(\theta)\).
+
+\section{Заключение}\label{conclusion}
+
+\textbf{Поздравляем с завершением модуля}! Материала было много. И поздравляем с окончанием практики: ты с нуля реализовал своего первого агента глубокого обучения с подкреплением на PyTorch и опубликовал его на Hub.
+
+Продолжай экспериментировать с этим модулем, \textbf{улучшая реализацию для более сложных сред}. Например, почему бы не заменить сеть свёрточной нейронной сетью для обработки кадров-наблюдений?
+
+В следующем модуле мы \textbf{подробнее познакомимся с Unity ML-Agents} и обучим агентов в средах Unity. Благодаря этому ты будешь готов к \textbf{соревнованиям AI vs AI, где агенты противостоят друг другу в снежной битве и футбольном матче}.
+
+Звучит интересно? До встречи в следующий раз!
+
+Наконец, нам очень хотелось бы \textbf{услышать твоё мнение о курсе и о том, как его можно улучшить}. Если есть предложения, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполни эту форму}.
+
+\subsubsection{Продолжай учиться и оставайся молодцом}\label{keep-learning-stay-awesome-1}
+
+\begingroup\small
+\section{Глоссарий}\label{glossary}
+
+Этот глоссарий создан сообществом. Мы будем рады твоему вкладу!
+
+\begin{itemize}
+\item
+  \textbf{Глубокое Q-обучение (Deep Q-Learning):} алгоритм глубокого обучения с подкреплением на основе ценности, использующий глубокую нейронную сеть для аппроксимации Q-значений действий в данном состоянии. Цель --- найти оптимальную политику, максимизирующую ожидаемую суммарную награду, путём обучения ценностей действий.
+\item
+  \textbf{Методы на основе ценности (value-based):} методы обучения с подкреплением, в которых функция ценности оценивается как промежуточный этап поиска оптимальной политики.
+\item
+  \textbf{Методы на основе политики (policy-based):} методы обучения с подкреплением, которые непосредственно аппроксимируют оптимальную политику без обучения функции ценности. На практике они выдают распределение вероятностей действий.
+
+  Преимущества методов градиента политики перед методами на основе ценности включают:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Простоту интеграции: не нужно хранить значения ценности действий.
+  \item
+    Возможность обучать стохастическую политику: агент исследует пространство состояний, не повторяя одну и ту же траекторию, и избегает проблемы неразличимости состояний по наблюдениям.
+  \item
+    Эффективность при большой размерности пространства действий и в непрерывных пространствах действий.
+  \item
+    Более благоприятные свойства сходимости.
+  \end{itemize}
+\item
+  \textbf{Градиент политики (Policy Gradient):} подкласс методов на основе политики, где целью является максимизация качества параметризованной политики с помощью градиентного подъёма. Смысл градиента политики --- управлять распределением вероятностей действий, настраивая политику так, чтобы хорошие действия (повышающие отдачу) выбирались чаще в будущем.
+\item
+  \textbf{Monte Carlo REINFORCE:} алгоритм градиента политики, который использует оценку отдачи за весь эпизод для обновления параметров политики.
+\end{itemize}
+
+Если хочешь помочь улучшить курс, можешь \href{https://github.com/huggingface/deep-rl-class/pulls}{создать Pull Request}.
+
+Создание этого глоссария стало возможным благодаря следующим участникам:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/dcarpintero}{Diego Carpintero}
+\end{itemize}
+
+\section{Дополнительная литература}\label{additional-readings}
+
+Эти материалы \textbf{необязательны}: они пригодятся, если захочешь изучить тему глубже.
+
+\subsection{Введение в оптимизацию политики}\label{introduction-to-policy-optimization}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html}{Часть 3. Введение в оптимизацию политики --- документация Spinning Up}.
+\end{itemize}
+
+\subsection{Градиент политики}\label{policy-gradient}
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://johnwlambert.github.io/policy-gradients/}
+\item
+  \href{https://jonathan-hui.medium.com/rl-policy-gradients-explained-9b13b688b146}{Объяснение градиентов политики в RL}.
+\item
+  \href{http://incompleteideas.net/book/RLbook2020.pdf}{Глава 13 «Методы градиента политики» в книге Reinforcement Learning: An Introduction Ричарда Саттона и Эндрю Барто}.
+\end{itemize}
+
+\subsection{Реализация}\label{implementation}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/pytorch/examples/blob/main/reinforcement_learning/reinforce.py}{Реализация REINFORCE на PyTorch}.
+\item
+  \href{https://github.com/MrSyee/pg-is-all-you-need}{Реализации алгоритмов от DDPG до PPO}.
+\end{itemize}
+
+\endgroup
+\end{document}

@@ -1,0 +1,1030 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 5 (complete MDX study edition).
+% Compile with latexmk -pdf from the notes/ directory.
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\graphicspath{{../assets/unit5/}}
+% Common preamble is unchanged; override running headers locally.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}HF Deep RL Course \enspace/\enspace Unit 5}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Unity ML-Agents}
+\title{\textbf{Deep Reinforcement Learning}\\[0.35em]\large Unit 5: Unity ML-Agents}
+\author{Hugging Face Deep RL Course\\\small Complete MDX-to-\LaTeX{} study edition}
+\date{}
+\begin{document}
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Source: Hugging Face Deep RL Course (original English text).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{An Introduction to Unity ML-Agents}\label{an-introduction-to-unity-ml-agents}
+
+\CourseFigure{thumbnail.png}{Unity ML-Agents course unit cover \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/thumbnail.png}{[original figure]}}
+
+One of the challenges in Reinforcement Learning is \textbf{creating environments}. Fortunately for us, we can use game engines to do so. These engines, such as \href{https://unity.com/}{Unity}, \href{https://godotengine.org/}{Godot} or \href{https://www.unrealengine.com/}{Unreal Engine}, are programs made to create video games. They are perfectly suited for creating environments: they provide physics systems, 2D/3D rendering, and more.
+
+One of them, \href{https://unity.com/}{Unity}, created the \href{https://github.com/Unity-Technologies/ml-agents}{Unity ML-Agents Toolkit}, a plugin based on the game engine Unity that allows us \textbf{to use the Unity Game Engine as an environment builder to train agents}. In the first bonus unit, this is what we used to train Huggy to catch a stick!
+
+\CourseFigure{example-envs.png}{Source: ML-Agents documentation (source: https://github.com/Unity-Technologies/ml-agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/example-envs.png}{[original figure]}}
+
+Unity ML-Agents Toolkit provides many exceptional pre-made environments, from playing football (soccer), learning to walk, and jumping over big walls.
+
+In this Unit, we'll learn to use ML-Agents, but \textbf{don't worry if you don't know how to use the Unity Game Engine}: you don't need to use it to train your agents.
+
+So, today, we're going to train two agents:
+
+\begin{itemize}
+\tightlist
+\item
+  The first one will learn to \textbf{shoot snowballs onto a spawning target}.
+\item
+  The second needs to \textbf{press a button to spawn a pyramid, then navigate to the pyramid, knock it over, and move to the gold brick at the top}. To do that, it will need to explore its environment, which will be done using a technique called curiosity.
+\end{itemize}
+
+\CourseFigure{envs.png}{SnowballTarget and Pyramids learning environments \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/envs.png}{[original figure]}}
+
+Then, after training, \textbf{you'll push the trained agents to the Hugging Face Hub}, and you'll be able to \textbf{visualize them playing directly on your browser without having to use the Unity Editor}.
+
+Doing this Unit will \textbf{prepare you for the next challenge: AI vs.~AI where you will train agents in multi-agents environments and compete against your classmates' agents}.
+
+Sound exciting? Let's get started!
+
+\section{How do Unity ML-Agents work?}\label{how-do-unity-ml-agents-work}
+
+Before training our agent, we need to understand \textbf{what ML-Agents is and how it works}.
+
+\subsection{What is Unity ML-Agents?}\label{what-is-unity-ml-agents}
+
+\href{https://github.com/Unity-Technologies/ml-agents}{Unity ML-Agents} is a toolkit for the game engine Unity that \textbf{allows us to create environments using Unity or use pre-made environments to train our agents}.
+
+It's developed by \href{https://unity.com/}{Unity Technologies}, the developers of Unity, one of the most famous Game Engines used by the creators of Firewatch, Cuphead, and Cities: Skylines.
+
+\CourseFigure{firewatch.jpeg}{Firewatch was made with Unity \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/firewatch.jpeg}{[original figure]}}
+
+\subsection{The six components}\label{the-six-components}
+
+With Unity ML-Agents, you have six essential components:
+
+\CourseFigure{mlagents-1.png}{Source: Unity ML-Agents Documentation (source: https://unity-technologies.github.io/ml-agents/) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/mlagents-1.png}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  The first is the \emph{Learning Environment}, which contains \textbf{the Unity scene (the environment) and the environment elements} (game characters).
+\item
+  The second is the \emph{Python Low-level API}, which contains \textbf{the low-level Python interface for interacting and manipulating the environment}. It's the API we use to launch the training.
+\item
+  Then, we have the \emph{External Communicator} that \textbf{connects the Learning Environment (made with C\#) with the low level Python API (Python)}.
+\item
+  The \emph{Python trainers}: the \textbf{Reinforcement algorithms made with PyTorch (PPO, SAC\ldots)}.
+\item
+  The \emph{Gym wrapper}: to encapsulate the RL environment in a gym wrapper.
+\item
+  The \emph{PettingZoo wrapper}: PettingZoo is the multi-agents version of the gym wrapper.
+\end{itemize}
+
+\subsection{Inside the Learning Component}\label{inside-the-learning-component}
+
+Inside the Learning Component, we have \textbf{two important elements}:
+
+\begin{itemize}
+\tightlist
+\item
+  The first is the \emph{agent component}, the actor of the scene. We'll \textbf{train the agent by optimizing its policy} (which will tell us what action to take in each state). The policy is called the \emph{Brain}.
+\item
+  Finally, there is the \emph{Academy}. This component \textbf{orchestrates agents and their decision-making processes}. Think of this Academy as a teacher who handles Python API requests.
+\end{itemize}
+
+To better understand its role, let's remember the RL process. This can be modeled as a loop that works like this:
+
+\CourseFigure{RL_process.jpg}{The RL Process: a loop of state, action, reward and next state; Source: Reinforcement Learning: An Introduction, Richard Sutton and Andrew G. Barto (source: http://incompleteideas.net/book/RLbook2020.pdf) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/RL_process.jpg}{[original figure]}}
+
+Now, let's imagine an agent learning to play a platform game. The RL process looks like this:
+
+\CourseFigure{RL_process_game.jpg}{Reinforcement learning process illustrated in a game \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/RL_process_game.jpg}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Our Agent receives \textbf{state \(S_0\)} from the \textbf{Environment} --- we receive the first frame of our game (Environment).
+\item
+  Based on that \textbf{state \(S_0\),} the Agent takes \textbf{action \(A_0\)} --- our Agent will move to the right.
+\item
+  The environment goes to a \textbf{new} \textbf{state \(S_1\)} --- new frame.
+\item
+  The environment gives some \textbf{reward \(R_1\)} to the Agent --- we're not dead \emph{(Positive Reward +1)}.
+\end{itemize}
+
+This RL loop outputs a sequence of \textbf{state, action, reward and next state.} The goal of the agent is to \textbf{maximize the expected cumulative reward}.
+
+The Academy will be the one that will \textbf{send the order to our Agents and ensure that agents are in sync}:
+
+\begin{itemize}
+\tightlist
+\item
+  Collect Observations
+\item
+  Select your action using your policy
+\item
+  Take the Action
+\item
+  Reset if you reached the max step or if you're done.
+\end{itemize}
+
+\CourseFigure{academy.png}{Unity ML-Agents Academy and the decision loop \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/academy.png}{[original figure]}}
+
+Now that we understand how ML-Agents works, \textbf{we're ready to train our agents.}
+
+\section{The SnowballTarget Environment}\label{the-snowballtarget-environment}
+
+\CourseFigure{snowballtarget_anim.png}{SnowballTarget learning environment (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget.gif}{[original animation]}}
+
+SnowballTarget is an environment we created at Hugging Face using assets from \href{https://kaylousberg.com/}{Kay Lousberg}. We have an optional section at the end of this Unit \textbf{if you want to learn to use Unity and create your environments}.
+
+\subsection{The agent's Goal}\label{the-agents-goal}
+
+The first agent you're going to train is called Julien the bear . Julien is trained \textbf{to hit targets with snowballs}.
+
+The Goal in this environment is that Julien \textbf{hits as many targets as possible in the limited time} (1000 timesteps). It will need \textbf{to place itself correctly in relation to the target and shoot}to do that.
+
+In addition, to avoid ``snowball spamming'' (aka shooting a snowball every timestep), \textbf{Julien has a ``cool off'' system} (it needs to wait 0.5 seconds after a shoot to be able to shoot again).
+
+\CourseFigure{cooloffsystem_anim.png}{The agent needs to wait 0.5s before being able to shoot a snowball again \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/cooloffsystem.gif}{[original animation]}}
+
+\subsection{The reward function and the reward engineering problem}\label{the-reward-function-and-the-reward-engineering-problem}
+
+The reward function is simple. \textbf{The environment gives a +1 reward every time the agent's snowball hits a target}. Because the agent's Goal is to maximize the expected cumulative reward, \textbf{it will try to hit as many targets as possible}.
+
+\CourseFigure{snowballtarget_reward.png}{SnowballTarget reward mechanism \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget_reward.png}{[original figure]}}
+
+We could have a more complex reward function (with a penalty to push the agent to go faster, for example). But when you design an environment, you need to avoid the \emph{reward engineering problem}, which is having a too complex reward function to force your agent to behave as you want it to do. Why? Because by doing that, \textbf{you might miss interesting strategies that the agent will find with a simpler reward function}.
+
+In terms of code, it looks like this:
+
+\CourseFigure{snowballtarget-reward-code.png}{SnowballTarget reward computation in code \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget-reward-code.png}{[original figure]}}
+
+\subsection{The observation space}\label{the-observation-space}
+
+Regarding observations, we don't use normal vision (frame), but \textbf{we use raycasts}.
+
+Think of raycasts as lasers that will detect if they pass through an object.
+
+\CourseFigure{raycasts.png}{Source: ML-Agents documentation (source: https://github.com/Unity-Technologies/ml-agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/raycasts.png}{[original figure]}}
+
+In this environment, our agent has multiple set of raycasts:
+
+\CourseFigure{snowball_target_raycasts.png}{SnowballTarget agent raycast observations \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowball_target_raycasts.png}{[original figure]}}
+
+In addition to raycasts, the agent gets a ``can I shoot'' bool as observation.
+
+\CourseFigure{snowballtarget-obs-code.png}{SnowballTarget observation collection code \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget-obs-code.png}{[original figure]}}
+
+\subsection{The action space}\label{the-action-space}
+
+The action space is discrete:
+
+\CourseFigure{snowballtarget_action_space.png}{SnowballTarget discrete action space \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget_action_space.png}{[original figure]}}
+
+\section{The Pyramid environment}\label{the-pyramid-environment}
+
+The goal in this environment is to train our agent to \textbf{get the gold brick on the top of the Pyramid. To do that, it needs to press a button to spawn a Pyramid, navigate to the Pyramid, knock it over, and move to the gold brick at the top}.
+
+\CourseFigure{pyramids.png}{The Pyramids learning environment \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids.png}{[original figure]}}
+
+\subsection{The reward function}\label{the-reward-function}
+
+The reward function is:
+
+\CourseFigure{pyramids-reward.png}{Reward structure of the Pyramids environment \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-reward.png}{[original figure]}}
+
+In terms of code, it looks like this
+
+\CourseFigure{pyramids-reward-code.png}{Pyramids reward computation in code \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-reward-code.png}{[original figure]}}
+
+To train this new agent that seeks that button and then the Pyramid to destroy, we'll use a combination of two types of rewards:
+
+\begin{itemize}
+\tightlist
+\item
+  The \emph{extrinsic one} given by the environment (illustration above).
+\item
+  But also an \emph{intrinsic} one called \textbf{curiosity}. This second will \textbf{push our agent to be curious, or in other terms, to better explore its environment}.
+\end{itemize}
+
+If you want to know more about curiosity, the next section (optional) will explain the basics.
+
+\subsection{The observation space}\label{the-observation-space-1}
+
+In terms of observation, we \textbf{use 148 raycasts that can each detect objects} (switch, bricks, golden brick, and walls.)
+
+\CourseFigure{pyramids_raycasts.png}{Pyramids agent raycast-based observations \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids_raycasts.png}{[original figure]}}
+
+We also use a \textbf{boolean variable indicating the switch state} (did we turn on or off the switch to spawn the Pyramid) and a vector that \textbf{contains the agent's speed}.
+
+\CourseFigure{pyramids-obs-code.png}{Pyramids observation collection code \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-obs-code.png}{[original figure]}}
+
+\subsection{The action space}\label{the-action-space-1}
+
+The action space is \textbf{discrete} with four possible actions:
+
+\CourseFigure{pyramids-action.png}{Pyramids discrete action space \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-action.png}{[original figure]}}
+
+\section{(Optional) What is Curiosity in Deep Reinforcement Learning?}\label{optional-what-is-curiosity-in-deep-reinforcement-learning}
+
+This is an (optional) introduction to Curiosity. If you want to learn more, you can read two additional articles where we dive into the mathematical details:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-next-state-prediction-f7f4e2f592fa}{Curiosity-Driven Learning through Next State Prediction}
+\item
+  \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-random-network-distillation-488ffd8e5938}{Random Network Distillation: a new take on Curiosity-Driven Learning}
+\end{itemize}
+
+\subsection{Two Major Problems in Modern RL}\label{two-major-problems-in-modern-rl}
+
+To understand what Curiosity is, we first need to understand the two major problems with RL:
+
+First, the \emph{sparse rewards problem:} that is, \textbf{most rewards do not contain information, and hence are set to zero}.
+
+Remember that RL is based on the \emph{reward hypothesis}, which is the idea that each goal can be described as the maximization of the rewards. Therefore, rewards act as feedback for RL agents; \textbf{if they don't receive any, their knowledge of which action is appropriate (or not) cannot change}.
+
+\CourseFigure{curiosity1.png}{Source: Thanks to the reward, our agent knows that this action at that state was good \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity1.png}{[original figure]}}
+
+For instance, in \href{https://vizdoom.cs.put.edu.pl/}{Vizdoom}, a set of environments based on the game Doom ``DoomMyWayHome,'' your agent is only rewarded \textbf{if it finds the vest}. However, the vest is far away from your starting point, so most of your rewards will be zero. Therefore, if our agent does not receive useful feedback (dense rewards), it will take much longer to learn an optimal policy, and \textbf{it can spend time turning around without finding the goal}.
+
+\CourseFigure{curiosity2.png}{Sparse rewards and the DoomMyWayHome environment \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity2.png}{[original figure]}}
+
+The second big problem is that \textbf{the extrinsic reward function is handmade; in each environment, a human has to implement a reward function}. But how we can scale that in big and complex environments?
+
+\subsection{So what is Curiosity?}\label{so-what-is-curiosity}
+
+A solution to these problems is \textbf{to develop a reward function intrinsic to the agent, i.e., generated by the agent itself}. The agent will act as a self-learner since it will be the student and its own feedback master.
+
+\textbf{This intrinsic reward mechanism is known as Curiosity} because this reward pushes the agent to explore states that are novel/unfamiliar. To achieve that, our agent will receive a high reward when exploring new trajectories.
+
+This reward is inspired by how humans act. \textbf{We naturally have an intrinsic desire to explore environments and discover new things}.
+
+There are different ways to calculate this intrinsic reward. The classical approach (Curiosity through next-state prediction) is to calculate Curiosity \textbf{as the error of our agent in predicting the next state, given the current state and action taken}.
+
+\CourseFigure{curiosity3.png}{Intrinsic curiosity reward from next-state prediction error \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity3.png}{[original figure]}}
+
+Because the idea of Curiosity is to \textbf{encourage our agent to perform actions that reduce the uncertainty in the agent's ability to predict the consequences of its actions} (uncertainty will be higher in areas where the agent has spent less time or in areas with complex dynamics).
+
+If the agent spends a lot of time on these states, it will be good at predicting the next state (low Curiosity). On the other hand, if it's in a new, unexplored state, it will be hard to predict the following state (high Curiosity).
+
+\CourseFigure{curiosity4.png}{Curiosity and exploration in unfamiliar states \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity4.png}{[original figure]}}
+
+Using Curiosity will push our agent to favor transitions with high prediction error (which will be higher in areas where the agent has spent less time, or in areas with complex dynamics) and \textbf{consequently better explore our environment}.
+
+There's also \textbf{other curiosity calculation methods}. ML-Agents uses a more advanced one called Curiosity through random network distillation. This is out of the scope of the tutorial but if you're interested \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-random-network-distillation-488ffd8e5938}{I wrote an article explaining it in detail}.
+
+\subsection{Hands-on}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit5/unit5.ipynb}{Official Unit 5 practical notebook (Google Colab)}
+
+\href{http://hf.co/join/discord}{Community help}
+
+We learned what ML-Agents is and how it works. We also studied the two environments we're going to use. Now we're ready to train our agents!
+
+\CourseFigure{envs.png}{SnowballTarget and Pyramids learning environments \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/envs.png}{[original figure]}}
+
+To validate this hands-on for the certification process, you \textbf{just need to push your trained models to the Hub.} There are \textbf{no minimum results to attain} in order to validate this Hands On. But if you want to get nice results, you can try to reach the following:
+
+\begin{itemize}
+\tightlist
+\item
+  For \href{https://huggingface.co/spaces/unity/ML-Agents-Pyramids}{Pyramids}: Mean Reward = 1.75
+\item
+  For \href{https://huggingface.co/spaces/ThomasSimonini/ML-Agents-SnowballTarget}{SnowballTarget}: Mean Reward = 15 or 30 targets shoot in an episode.
+\end{itemize}
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+\textbf{To start the hands-on, click on Open In Colab button} :
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit5/unit5.ipynb}{Open in Google Colab}
+
+We strongly \textbf{recommend students use Google Colab for the hands-on exercises} instead of running them on their personal computers.
+
+By using Google Colab, \textbf{you can focus on learning and experimenting without worrying about the technical aspects} of setting up your environments.
+
+\subsection{Unit 5: An Introduction to ML-Agents}\label{unit-5-an-introduction-to-ml-agents}
+
+\CourseFigure{thumbnail.png}{Unity ML-Agents course unit cover \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/thumbnail.png}{[original figure]}}
+
+In this notebook, you'll learn about ML-Agents and train two agents.
+
+\begin{itemize}
+\tightlist
+\item
+  The first one will learn to \textbf{shoot snowballs onto spawning targets}.
+\item
+  The second needs to press a button to spawn a pyramid, then navigate to the pyramid, knock it over, \textbf{and move to the gold brick at the top}. To do that, it will need to explore its environment, and we will use a technique called curiosity.
+\end{itemize}
+
+After that, you'll be able \textbf{to watch your agents playing directly on your browser}.
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+Here is an example of what \textbf{you will achieve at the end of this unit.}
+
+\CourseFigure{pyramids_anim.png}{Pyramids agent demonstration (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids.gif}{[original animation]}}
+
+\CourseFigure{snowballtarget_anim.png}{SnowballTarget learning environment (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget.gif}{[original animation]}}
+
+\paragraph{Environments:}\label{environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Examples.md\#pyramids}{Pyramids}
+\item
+  SnowballTarget
+\end{itemize}
+
+\paragraph{RL-Library:}\label{rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/Unity-Technologies/ml-agents}{ML-Agents}
+\end{itemize}
+
+We're constantly trying to improve our tutorials, so \textbf{if you find some issues in this notebook}, please \href{https://github.com/huggingface/deep-rl-class/issues}{open an issue on the GitHub Repo}.
+
+\subsubsection{Objectives of this notebook}\label{objectives-of-this-notebook}
+
+At the end of the notebook, you will:
+
+\begin{itemize}
+\tightlist
+\item
+  Understand how \textbf{ML-Agents} works and the environment library.
+\item
+  Be able to \textbf{train agents in Unity Environments}.
+\end{itemize}
+
+\subsubsection{Prerequisites}\label{prerequisites}
+
+Before diving into the notebook, you need to:
+
+\textbf{Study \href{https://huggingface.co/deep-rl-course/unit5/introduction}{what ML-Agents is and how it works by reading Unit 5}}
+
+\subsection{Let's train our agents}\label{lets-train-our-agents}
+
+\subsubsection{Set the GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  To \textbf{accelerate the agent's training, we'll use a GPU}. To do that, go to \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Selecting the Google Colab runtime type \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Enabling the GPU accelerator in Google Colab \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[original figure]}}
+
+\subsubsection{Clone the repository}\label{clone-the-repository}
+
+\begin{itemize}
+\tightlist
+\item
+  We need to clone the repository, that contains \textbf{ML-Agents.}
+\end{itemize}
+
+\begin{lstlisting}
+# Clone the repository (can take 3min)
+git clone --depth 1 https://github.com/Unity-Technologies/ml-agents
+\end{lstlisting}
+
+\subsubsection{Setup the Virtual Environment}\label{setup-the-virtual-environment}
+
+\begin{itemize}
+\item
+  In order for the \textbf{ML-Agents} to run successfully in Colab, Colab's Python version must meet the library's Python requirements.
+\item
+  We can check for the supported Python version under the \texttt{python\_requires} parameter in the \texttt{setup.py} files. These files are required to set up the \textbf{ML-Agents} library for use and can be found in the following locations:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \texttt{/content/ml-agents/ml-agents/setup.py}
+  \item
+    \texttt{/content/ml-agents/ml-agents-envs/setup.py}
+  \end{itemize}
+\item
+  Colab's Current Python version(can be checked using \texttt{!python\ -\/-version}) doesn't match the library's \texttt{python\_requires} parameter, as a result installation may silently fail and lead to errors like these, when executing the same commands later:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \texttt{/bin/bash:\ line\ 1:\ mlagents-learn:\ command\ not\ found}
+  \item
+    \texttt{/bin/bash:\ line\ 1:\ mlagents-push-to-hf:\ command\ not\ found}
+  \end{itemize}
+\item
+  To resolve this, we'll create a virtual environment with a Python version compatible with the \textbf{ML-Agents} library.
+\end{itemize}
+
+\texttt{Note:} \emph{For future compatibility, always check the \texttt{python\_requires} parameter in the installation files and set your virtual environment to the maximum supported Python version in the given below script if the Colab's Python version is not compatible}
+
+\begin{lstlisting}
+# Colab's Current Python Version (Incompatible with ML-Agents)
+!python --version
+\end{lstlisting}
+
+\begin{lstlisting}
+# Install virtualenv and create a virtual environment
+!pip install virtualenv
+!virtualenv myenv
+
+# Download and install Miniconda
+!wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+!chmod +x Miniconda3-latest-Linux-x86_64.sh
+!./Miniconda3-latest-Linux-x86_64.sh -b -f -p /usr/local
+
+# Activate Miniconda and install Python ver 3.10.12
+!source /usr/local/bin/activate
+!conda install -q -y --prefix /usr/local python=3.10.12 ujson  # Specify the version here
+
+# Set environment variables for Python and conda paths
+!export PYTHONPATH=/usr/local/lib/python3.10/site-packages/
+!export CONDA_PREFIX=/usr/local/envs/myenv
+\end{lstlisting}
+
+\begin{lstlisting}
+# Python Version in New Virtual Environment (Compatible with ML-Agents)
+!python --version
+\end{lstlisting}
+
+\subsubsection{Installing the dependencies}\label{installing-the-dependencies}
+
+\begin{lstlisting}
+# Go inside the repository and install the package (can take 3min)
+%cd ml-agents
+pip3 install -e ./ml-agents-envs
+pip3 install -e ./ml-agents
+\end{lstlisting}
+
+\subsubsection{SnowballTarget}\label{snowballtarget}
+
+If you need a refresher on how this environment works check this section \url{https://huggingface.co/deep-rl-course/unit5/snowball-target}
+
+\paragraph{\texorpdfstring{Download and move the environment zip file in \texttt{./training-envs-executables/linux/}}{Download and move the environment zip file in ./training-envs-executables/linux/}}\label{download-and-move-the-environment-zip-file-in-.training-envs-executableslinux}
+
+\begin{itemize}
+\tightlist
+\item
+  Our environment executable is in a zip file.
+\item
+  We need to download it and place it to \texttt{./training-envs-executables/linux/}
+\item
+  We use a linux executable because we use colab, and colab machines OS is Ubuntu (linux)
+\end{itemize}
+
+\begin{lstlisting}
+# Here, we create training-envs-executables and linux
+mkdir ./training-envs-executables
+mkdir ./training-envs-executables/linux
+\end{lstlisting}
+
+We downloaded the file SnowballTarget.zip from \url{https://github.com/huggingface/Snowball-Target} using \texttt{wget}
+
+\begin{lstlisting}
+wget "https://github.com/huggingface/Snowball-Target/raw/main/SnowballTarget.zip" -O ./training-envs-executables/linux/SnowballTarget.zip
+\end{lstlisting}
+
+We unzip the executable.zip file
+
+\begin{lstlisting}
+unzip -d ./training-envs-executables/linux/ ./training-envs-executables/linux/SnowballTarget.zip
+\end{lstlisting}
+
+Make sure your file is accessible
+
+\begin{lstlisting}
+chmod -R 755 ./training-envs-executables/linux/SnowballTarget
+\end{lstlisting}
+
+\paragraph{Define the SnowballTarget config file}\label{define-the-snowballtarget-config-file}
+
+\begin{itemize}
+\tightlist
+\item
+  In ML-Agents, you define the \textbf{training hyperparameters in config.yaml files.}
+\end{itemize}
+
+There are multiple hyperparameters. To understand them better, you should read the explanation for each one in \href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/Training-Configuration-File.md}{the documentation}
+
+You need to create a \texttt{SnowballTarget.yaml} config file in ./content/ml-agents/config/ppo/
+
+We'll give you a preliminary version of this config (to copy and paste into your \texttt{SnowballTarget.yaml\ file}), \textbf{but you should modify it}.
+
+\begin{lstlisting}
+behaviors:
+  SnowballTarget:
+    trainer_type: ppo
+    summary_freq: 10000
+    keep_checkpoints: 10
+    checkpoint_interval: 50000
+    max_steps: 200000
+    time_horizon: 64
+    threaded: true
+    hyperparameters:
+      learning_rate: 0.0003
+      learning_rate_schedule: linear
+      batch_size: 128
+      buffer_size: 2048
+      beta: 0.005
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: false
+      hidden_units: 256
+      num_layers: 2
+      vis_encode_type: simple
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+\end{lstlisting}
+
+\CourseFigure{snowballfight_config1.png}{SnowballTarget PPO training configuration, part one \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballfight_config1.png}{[original figure]}}
+
+\CourseFigure{snowballfight_config2.png}{SnowballTarget PPO training configuration, part two \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballfight_config2.png}{[original figure]}}
+
+As an experiment, try to modify some other hyperparameters. Unity provides very \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Training-Configuration-File.md}{good documentation explaining each of them here}.
+
+Now that you've created the config file and understand what most hyperparameters do, we're ready to train our agent .
+
+\paragraph{Train the agent}\label{train-the-agent}
+
+To train our agent, we need to \textbf{launch mlagents-learn and select the executable containing the environment.}
+
+We define four parameters:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \texttt{mlagents-learn\ \textless{}config\textgreater{}}: the path where the hyperparameter config file is.
+\item
+  \texttt{-\/-env}: where the environment executable is.
+\item
+  \texttt{-\/-run\_id}: the name you want to give to your training run id.
+\item
+  \texttt{-\/-no-graphics}: to not launch the visualization during the training.
+\end{enumerate}
+
+\CourseFigure{mlagentslearn.png}{ML-Agents command-line training configuration \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/mlagentslearn.png}{[original figure]}}
+
+Train the model and use the \texttt{-\/-resume} flag to continue training in case of interruption.
+
+\begin{quote}
+It will fail the first time if and when you use \texttt{-\/-resume}. Try rerunning the block to bypass the error.
+\end{quote}
+
+The training will take 10 to 35min depending on your config. Go take a coffee you deserve it .
+
+\begin{lstlisting}
+mlagents-learn ./config/ppo/SnowballTarget.yaml --env=./training-envs-executables/linux/SnowballTarget/SnowballTarget --run-id="SnowballTarget1" --no-graphics
+\end{lstlisting}
+
+\paragraph{Push the agent to the Hugging Face Hub}\label{push-the-agent-to-the-hugging-face-hub}
+
+\begin{itemize}
+\tightlist
+\item
+  Now that we've trained our agent, we're \textbf{ready to push it to the Hub and visualize it playing on your browser.}
+\end{itemize}
+
+To be able to share your model with the community, there are three more steps to follow:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  (If it's not already done) create an account to HF -\textgreater{} \url{https://huggingface.co/join}
+\item
+  Sign in and store your authentication token from the Hugging Face website.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Create a new token (\url{https://huggingface.co/settings/tokens}) \textbf{with write role}
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Creating a Hugging Face access token \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Copy the token
+\item
+  Run the cell below and paste the token
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login
+
+notebook_login()
+\end{lstlisting}
+
+If you don't want to use Google Colab or a Jupyter Notebook, you need to use this command instead: \texttt{huggingface-cli\ login}
+
+Then we need to run \texttt{mlagents-push-to-hf}.
+
+And we define four parameters:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \texttt{-\/-run-id}: the name of the training run id.
+\item
+  \texttt{-\/-local-dir}: where the agent was saved, it's results/, so in my case results/First Training.
+\item
+  \texttt{-\/-repo-id}: the name of the Hugging Face repo you want to create or update. It's always \texttt{\textless{}your\ huggingface\ username\textgreater{}/\textless{}the\ repo\ name\textgreater{}} If the repo does not exist \textbf{it will be created automatically}
+\item
+  \texttt{-\/-commit-message}: since HF repos are git repositories you need to give a commit message.
+\end{enumerate}
+
+\CourseFigure{mlagentspushtohub.png}{ML-Agents model publishing command \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/mlagentspushtohub.png}{[original figure]}}
+
+For instance:
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id="SnowballTarget1" --local-dir="./results/SnowballTarget1" --repo-id="ThomasSimonini/ppo-SnowballTarget"  --commit-message="First Push"
+\end{lstlisting}
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id= # Add your run id  --local-dir= # Your local dir  --repo-id= # Your repo id  --commit-message= # Your commit message
+\end{lstlisting}
+
+If everything worked you should see this at the end of the process (but with a different url ) :
+
+\begin{lstlisting}
+Your model is pushed to the hub. You can view your model here: https://huggingface.co/ThomasSimonini/ppo-SnowballTarget
+\end{lstlisting}
+
+It's the link to your model. It contains a model card that explains how to use it, your Tensorboard, and your config file. \textbf{What's awesome is that it's a git repository, which means you can have different commits, update your repository with a new push, etc.}
+
+But now comes the best: \textbf{being able to visualize your agent online .}
+
+\paragraph{Watch your agent playing}\label{watch-your-agent-playing}
+
+This step it's simple:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Go here: \url{https://huggingface.co/spaces/ThomasSimonini/ML-Agents-SnowballTarget}
+\item
+  Launch the game and put it in full screen by clicking on the bottom right button
+\end{enumerate}
+
+\CourseFigure{snowballtarget_load.png}{Loading a trained SnowballTarget agent in a Hugging Face Space \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget_load.png}{[original figure]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  In step 1, type your username (your username is case sensitive: for instance, my username is ThomasSimonini not thomassimonini or ThOmasImoNInI) and click on the search button.
+\item
+  In step 2, select your model repository.
+\item
+  In step 3, \textbf{choose which model you want to replay}:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  I have multiple ones, since we saved a model every 500000 timesteps.
+\item
+  But since I want the most recent one, I choose \texttt{SnowballTarget.onnx}
+\end{itemize}
+
+It's good \textbf{to try with different models steps to see the improvement of the agent.}
+
+And don't hesitate to share the best score your agent gets on discord in the \#rl-i-made-this channel
+
+Now let's try a more challenging environment called Pyramids.
+
+\subsubsection{Pyramids}\label{pyramids}
+
+\paragraph{\texorpdfstring{Download and move the environment zip file in \texttt{./training-envs-executables/linux/}}{Download and move the environment zip file in ./training-envs-executables/linux/}}\label{download-and-move-the-environment-zip-file-in-.training-envs-executableslinux-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Our environment executable is in a zip file.
+\item
+  We need to download it and place it into \texttt{./training-envs-executables/linux/}
+\item
+  We use a linux executable because we're using colab, and the colab machine's OS is Ubuntu (linux)
+\end{itemize}
+
+We downloaded the file Pyramids.zip from from \url{https://huggingface.co/spaces/unity/ML-Agents-Pyramids/resolve/main/Pyramids.zip} using \texttt{wget}
+
+\begin{lstlisting}
+wget "https://huggingface.co/spaces/unity/ML-Agents-Pyramids/resolve/main/Pyramids.zip" -O ./training-envs-executables/linux/Pyramids.zip
+\end{lstlisting}
+
+Unzip it
+
+\begin{lstlisting}
+unzip -d ./training-envs-executables/linux/ ./training-envs-executables/linux/Pyramids.zip
+\end{lstlisting}
+
+Make sure your file is accessible
+
+\begin{lstlisting}
+chmod -R 755 ./training-envs-executables/linux/Pyramids/Pyramids
+\end{lstlisting}
+
+\paragraph{Modify the PyramidsRND config file}\label{modify-the-pyramidsrnd-config-file}
+
+\begin{itemize}
+\tightlist
+\item
+  Contrary to the first environment, which was a custom one, \textbf{Pyramids was made by the Unity team}.
+\item
+  So the PyramidsRND config file already exists and is in \path{./content/ml-agents/config/ppo/PyramidsRND.yaml}
+\item
+  You might ask why ``RND'' is in PyramidsRND. RND stands for \emph{random network distillation} it's a way to generate curiosity rewards. If you want to know more about that, we wrote an article explaining this technique: \url{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-random-network-distillation-488ffd8e5938}
+\end{itemize}
+
+For this training, we'll modify one thing:
+
+\begin{itemize}
+\tightlist
+\item
+  The total training steps hyperparameter is too high since we can hit the benchmark (mean reward = 1.75) in only 1M training steps. To do that, we go to config/ppo/PyramidsRND.yaml,\textbf{and change max\_steps to 1000000.}
+\end{itemize}
+
+\CourseFigure{pyramids-config.png}{PyramidsRND configuration and maximum training steps \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-config.png}{[original figure]}}
+
+As an experiment, you should also try to modify some other hyperparameters. Unity provides very \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Training-Configuration-File.md}{good documentation explaining each of them here}.
+
+We're now ready to train our agent .
+
+\paragraph{Train the agent}\label{train-the-agent-1}
+
+The training will take 30 to 45min depending on your machine, go take a coffee you deserve it .
+
+\begin{lstlisting}
+mlagents-learn ./config/ppo/PyramidsRND.yaml --env=./training-envs-executables/linux/Pyramids/Pyramids --run-id="Pyramids Training" --no-graphics
+\end{lstlisting}
+
+\paragraph{Push the agent to the Hugging Face Hub}\label{push-the-agent-to-the-hugging-face-hub-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Now that we trained our agent, we're \textbf{ready to push it to the Hub to be able to visualize it playing on your browser.}
+\end{itemize}
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id= # Add your run id  --local-dir= # Your local dir  --repo-id= # Your repo id  --commit-message= # Your commit message
+\end{lstlisting}
+
+\paragraph{Watch your agent playing}\label{watch-your-agent-playing-1}
+
+\url{https://huggingface.co/spaces/unity/ML-Agents-Pyramids}
+
+\paragraph{Bonus: Why not train on another environment?}\label{bonus-why-not-train-on-another-environment}
+
+Now that you know how to train an agent using MLAgents, \textbf{why not try another environment?}
+
+MLAgents provides 17 different environments and we're building some custom ones. The best way to learn is to try things on your own, have fun.
+
+\CourseFigure{0xERdThTRRM2k_U9f.png}{Example of another Unity ML-Agents environment \protect\href{https://miro.medium.com/max/1400/0*xERdThTRRM2k_U9f.png}{[original figure]}}
+
+You have the full list of the one currently available environments on Hugging Face here \url{https://github.com/huggingface/ml-agents#the-environments}
+
+For the demos to visualize your agent \url{https://huggingface.co/unity}
+
+For now we have integrated:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://huggingface.co/spaces/unity/ML-Agents-Worm}{Worm} demo where you teach a \textbf{worm to crawl}.
+\item
+  \href{https://huggingface.co/spaces/unity/ML-Agents-Walker}{Walker} demo where you teach an agent \textbf{to walk towards a goal}.
+\end{itemize}
+
+That's all for today. Congrats on finishing this tutorial!
+
+The best way to learn is to practice and try stuff. Why not try another environment? ML-Agents has 18 different environments, but you can also create your own. Check the documentation and have fun!
+
+See you on Unit 6 ,
+
+\subsubsection{Keep Learning, Stay awesome}\label{keep-learning-stay-awesome}
+
+\section{Quiz}\label{quiz}
+
+The best way to learn and \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{to avoid the illusion of competence} \textbf{is to test yourself.} This will help you to find \textbf{where you need to reinforce your knowledge}.
+
+\subsubsection{Q1: Which of the following tools are specifically designed for video games development?}\label{q1-which-of-the-following-tools-are-specifically-designed-for-video-games-development}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Unity (C\#)
+\item
+  \textbf{B.} Unreal Engine (C++)
+\item
+  \textbf{C.} Godot (GDScript, C++, C\#)
+\item
+  \textbf{D.} JetBrains' Rider
+\item
+  \textbf{E.} JetBrains' CLion
+\item
+  \textbf{F.} Microsoft Visual Studio and Visual Studio Code
+\end{itemize}
+
+\subsubsection{Q2: What of the following statements are true about Unity ML-Agents?}\label{q2-what-of-the-following-statements-are-true-about-unity-ml-agents}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Unity 'Scene' objects can be used to create learning environments
+\item
+  \textbf{B.} Unit ML-Agents allows you to create and train your agents using Reinforcement Learning
+\item
+  \textbf{C.} Its \texttt{Communicator} component manages the communication between Unity's C\# Environments/Agents and a Python back-end
+\item
+  \textbf{D.} The training process uses Reinforcement Learning algorithms, implemented in Pytorch
+\item
+  \textbf{E.} Unity ML-Agents only support Proximal Policy Optimization (PPO)
+\item
+  \textbf{F.} It includes a Gym Wrapper and a multi-agent version of it called \texttt{PettingZoo}
+\end{itemize}
+
+\subsubsection{Q3: Fill the missing letters}\label{q3-fill-the-missing-letters}
+
+\begin{itemize}
+\tightlist
+\item
+  In Unity ML-Agents, the Policy of an Agent is called a b \_ \_ \_ n
+\item
+  The component in charge of orchestrating the agents is called the \_ c \_ \_ \_ m \_
+\end{itemize}
+
+\subsubsection{\texorpdfstring{Q4: Define with your own words what is a \texttt{raycast}}{Q4: Define with your own words what is a raycast}}\label{q4-define-with-your-own-words-what-is-a-raycast}
+
+\subsubsection{\texorpdfstring{Q5: Which are the differences between capturing the environment using \texttt{frames} or \texttt{raycasts}?}{Q5: Which are the differences between capturing the environment using frames or raycasts?}}\label{q5-which-are-the-differences-between-capturing-the-environment-using-frames-or-raycasts}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} By using \texttt{frames}, the environment is defined by each of the pixels of the screen. By using \texttt{raycasts}, we only send a sample of those pixels.
+\item
+  \textbf{B.} By using \texttt{raycasts}, the environment is defined by each of the pixels of the screen. By using \texttt{frames}, we spawn a (usually) line to check what objects it collides with
+\item
+  \textbf{C.} By using \texttt{frames}, we collect all the pixels of the screen, which define the environment. By using \texttt{raycast}, we don't use pixels, we spawn (normally) lines and check their collisions
+\end{itemize}
+
+\subsubsection{Q6: Name several environment and agent input variables used to train the agent in the Snowball or Pyramid environments}\label{q6-name-several-environment-and-agent-input-variables-used-to-train-the-agent-in-the-snowball-or-pyramid-environments}
+
+Congrats on finishing this Quiz , if you missed some elements, take time to read the chapter again to reinforce () your knowledge.
+
+\subsection{Quiz solutions and explanations}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Q1 solution}\label{q1-solution}
+
+\textbf{Correct answer(s):} A, B, C
+
+\textbf{A.} Unity (C\#)
+
+\textbf{B.} Unreal Engine (C++)
+
+\textbf{C.} Godot (GDScript, C++, C\#)
+
+\textbf{D.} JetBrains' Rider Explanation: Although useful for its support of C\# for Unity, it's not a video games development IDE
+
+\textbf{E.} JetBrains' CLion Explanation: Although useful for its support of C++ for Unreal Engine, it's not a video games development IDE
+
+\textbf{F.} Microsoft Visual Studio and Visual Studio Code Explanation: Including support for both Unity and Unreal, they are generic IDEs, not video games oriented.
+
+\subsubsection{Q2 solution}\label{q2-solution}
+
+\textbf{Correct answer(s):} A, B, C, D, F
+
+\textbf{A.} Unity 'Scene' objects can be used to create learning environments
+
+\textbf{B.} Unit ML-Agents allows you to create and train your agents using Reinforcement Learning
+
+\textbf{C.} Its \texttt{Communicator} component manages the communication between Unity's C\# Environments/Agents and a Python back-end
+
+\textbf{D.} The training process uses Reinforcement Learning algorithms, implemented in Pytorch
+
+\textbf{E.} Unity ML-Agents only support Proximal Policy Optimization (PPO) Explanation: No, Unity ML-Agents supports several families of algorithms, including Actor-Critic which is going to be explained in the next section
+
+\textbf{F.} It includes a Gym Wrapper and a multi-agent version of it called \texttt{PettingZoo}
+
+\subsubsection{Q3 solution}\label{q3-solution}
+
+\begin{itemize}
+\tightlist
+\item
+  b r a i n
+\item
+  a c a d e m y
+\end{itemize}
+
+\subsubsection{Q4 solution}\label{q4-solution}
+
+A raycast is (most of the times) a linear projection, as a \texttt{laser} which aims to detect collisions through objects.
+
+\subsubsection{Q5 solution}\label{q5-solution}
+
+\textbf{Correct answer(s):} C
+
+\textbf{A.} By using \texttt{frames}, the environment is defined by each of the pixels of the screen. By using \texttt{raycasts}, we only send a sample of those pixels. Explanation: \texttt{Raycasts} don't have anything to do with pixels. They are linear projections (lasers) that we spawn to look for collisions.
+
+\textbf{B.} By using \texttt{raycasts}, the environment is defined by each of the pixels of the screen. By using \texttt{frames}, we spawn a (usually) line to check what objects it collides with Explanation: It's the other way around - \texttt{frames} collect pixels, \texttt{raycasts} check for collisions.
+
+\textbf{C.} By using \texttt{frames}, we collect all the pixels of the screen, which define the environment. By using \texttt{raycast}, we don't use pixels, we spawn (normally) lines and check their collisions
+
+\subsubsection{Q6 solution}\label{q6-solution}
+
+\begin{itemize}
+\tightlist
+\item
+  Collisions of the raycasts spawned from the agent detecting blocks, (invisible) walls, stones, our target, switches, etc.
+\item
+  Traditional inputs describing agent features, as its speed
+\item
+  Boolean vars, as the switch (on/off) in Pyramids or the \texttt{can\ I\ shoot?} in the SnowballTarget.
+\end{itemize}
+
+\section{Conclusion}\label{conclusion}
+
+Congrats on finishing this unit! You've just trained your first ML-Agents and shared it to the Hub .
+
+The best way to learn is to \textbf{practice and try stuff}. Why not try another environment? \href{https://github.com/Unity-Technologies/ml-agents/blob/develop/docs/Learning-Environment-Examples.md}{ML-Agents has 18 different environments}.
+
+For instance:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://singularite.itch.io/worm}{Worm}, where you teach a worm to crawl.
+\item
+  \href{https://singularite.itch.io/walker}{Walker}, where you teach an agent to walk towards a goal.
+\end{itemize}
+
+Check the documentation to find out how to train them and to see the list of already integrated MLAgents environments on the Hub: \url{https://github.com/huggingface/ml-agents#getting-started}
+
+\CourseFigure{envs-unity.jpeg}{Additional example Unity ML-Agents environments \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/envs-unity.jpeg}{[original figure]}}
+
+In the next unit, we're going to learn about multi-agents. You're going to train your first multi-agents to compete in Soccer and Snowball fight against other classmate's agents.
+
+\CourseFigure{snowballfight_anim.png}{Snowball fight among trained agents (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballfight.gif}{[original animation]}}
+
+Finally, we would love \textbf{to hear what you think of the course and how we can improve it}. If you have some feedback then please \href{https://forms.gle/BzKXWzLAGZESGNaE9}{fill this form}
+
+\subsubsection{Keep Learning, stay awesome}\label{keep-learning-stay-awesome-1}
+
+\section{Bonus: Learn to create your own environments with Unity and MLAgents}\label{bonus-learn-to-create-your-own-environments-with-unity-and-mlagents}
+
+\textbf{You can create your own reinforcement learning environments with Unity and MLAgents}. Using a game engine such as Unity can be intimidating at first, but here are the steps you can take to learn smoothly.
+
+\subsection{Step 1: Know how to use Unity}\label{step-1-know-how-to-use-unity}
+
+\begin{itemize}
+\tightlist
+\item
+  The best way to learn Unity is to do \href{https://learn.unity.com/course/create-with-code}{``Create with Code'' course}: it's a series of videos for beginners where \textbf{you will create 5 small games with Unity}.
+\end{itemize}
+
+\subsection{Step 2: Create the simplest environment with this tutorial}\label{step-2-create-the-simplest-environment-with-this-tutorial}
+
+\begin{itemize}
+\tightlist
+\item
+  Then, when you know how to use Unity, you can create your \href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/Learning-Environment-Create-New.md}{first basic RL environment using this tutorial}.
+\end{itemize}
+
+\subsection{Step 3: Iterate and create nice environments}\label{step-3-iterate-and-create-nice-environments}
+
+\begin{itemize}
+\tightlist
+\item
+  Now that you've created your first simple environment you can iterate to more complex ones using the \href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/}{MLAgents documentation (especially Designing Agents and Agent part)}
+\item
+  In addition, you can take this free course \href{https://learn.unity.com/course/ml-agents-hummingbirds}{``Create a hummingbird environment''} by \href{https://twitter.com/aktwelve}{Adam Kelly}
+\end{itemize}
+
+Have fun! And if you create custom environments don't hesitate to share them to the \texttt{\#rl-i-made-this} discord channel.
+
+\end{document}

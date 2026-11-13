@@ -1,0 +1,168 @@
+
+% Shared typography/layout for Hugging Face Deep RL Course notes.
+% Compile with pdfLaTeX / latexmk -pdf with notes/ as the working directory.
+% e.g. cd notes && latexmk -pdf unit1.tex
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage{textcomp}
+\usepackage{geometry}
+\geometry{a4paper,margin=22mm,headheight=14pt,headsep=8mm,footskip=12mm}
+
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx,caption,needspace,placeins}
+\usepackage{array,booktabs,tabularx}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{bookmark}
+
+\definecolor{ink}{HTML}{243041}
+\definecolor{accent}{HTML}{38598C}
+\definecolor{secondary}{HTML}{60768A}
+\definecolor{codebg}{HTML}{F4F6F8}
+\definecolor{codeborder}{HTML}{E3E8EE}
+\definecolor{notebg}{HTML}{F3F7FC}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=accent,
+  urlcolor=accent,
+  citecolor=accent,
+  pdfborder={0 0 0}
+}
+\urlstyle{same}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.38em plus 0.12em minus 0.05em}
+
+\setlist[itemize]{
+  topsep=0.35em,
+  itemsep=0.13em,
+  leftmargin=1.7em
+}
+\setlist[enumerate]{
+  topsep=0.35em,
+  itemsep=0.13em,
+  leftmargin=1.8em
+}
+
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{2}
+
+\titleformat{\section}
+  {\Large\bfseries\color{ink}}
+  {\thesection}{0.7em}{}
+
+\titleformat{\subsection}
+  {\large\bfseries\color{accent}}
+  {\thesubsection}{0.7em}{}
+
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\color{ink}}
+  {\thesubsubsection}{0.6em}{}
+
+\titlespacing*{\section}
+  {0pt}{2.2ex plus 0.7ex}{0.9ex}
+\titlespacing*{\subsection}
+  {0pt}{1.7ex plus 0.4ex}{0.6ex}
+\titlespacing*{\subsubsection}
+  {0pt}{1.3ex plus 0.3ex}{0.45ex}
+
+\pagestyle{fancy}
+\fancyhf{}
+
+\fancyhead[L]{
+  \footnotesize\sffamily\color{secondary}
+  HF Deep RL Course \enspace/\enspace Unit 1
+}
+\fancyhead[R]{
+  \footnotesize\sffamily\color{secondary}
+  \nouppercase{\rightmark}
+}
+\fancyfoot[C]{
+  \footnotesize\color{secondary}\thepage
+}
+\renewcommand{\headrulewidth}{0.25pt}
+
+\captionsetup{
+  font=small,
+  labelfont={bf,color=secondary},
+  textfont={color=ink},
+  justification=centering,
+  skip=4pt,
+  hypcap=false
+}
+
+\lstdefinestyle{hfcode}{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeborder},
+  numbers=none,
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  xleftmargin=0pt,
+  xrightmargin=0pt,
+  aboveskip=0.6em,
+  belowskip=0.6em,
+  framexleftmargin=7pt,
+  framexrightmargin=7pt,
+  framextopmargin=5pt,
+  framexbottommargin=5pt,
+  upquote=true,
+  tabsize=4,
+}
+\lstset{style=hfcode}
+
+\newcommand{\CourseFigure}[2]{%
+  \par\addvspace{0.55em}\noindent%
+  \begin{minipage}{\linewidth}%
+    \centering
+    \includegraphics[
+      width=0.86\linewidth,
+      height=0.295\textheight,
+      keepaspectratio
+    ]{#1}\par
+    \captionof{figure}{#2}%
+  \end{minipage}%
+  \par\addvspace{0.55em}%
+}
+
+\newtcolorbox{coursenote}{
+  enhanced,
+  breakable,
+  colback=notebg,
+  colframe=accent!30,
+  boxrule=0.35pt,
+  arc=1.2mm,
+  left=9pt,
+  right=9pt,
+  top=6pt,
+  bottom=6pt
+}
+
+\renewenvironment{quote}
+  {\begin{coursenote}}
+  {\end{coursenote}}
+
+\emergencystretch=2.5em
+
+\providecommand{\tightlist}{
+  \setlength{\itemsep}{0pt}
+  \setlength{\parskip}{0pt}
+}
+
+\providecommand{\passthrough}[1]{#1}
+
+\Urlmuskip=0mu plus 6mu\relax

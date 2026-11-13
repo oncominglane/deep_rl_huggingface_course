@@ -1,0 +1,66 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Bonus Unit 2 (complete MDX study edition).
+% Compile with latexmk -pdf, from notes/en/, using the unchanged ../preamble.tex.
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\graphicspath{{../assets/unitbonus2/}}
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}HF Deep RL Course \enspace/\enspace Bonus Unit 2}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Hyperparameter Tuning}
+\title{\textbf{Deep Reinforcement Learning}\\[0.35em]\large Bonus Unit 2: Automatic Hyperparameter Tuning with Optuna}
+\author{Hugging Face Deep RL Course\\\small Complete MDX-to-\LaTeX{} study edition}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+\begin{center}\small\color{secondary}Source: Hugging Face Deep RL Course (original English text).\end{center}
+\vspace{-0.45em}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.3em}
+
+\section{Introduction}\label{introduction}
+
+One of the most critical tasks in Deep Reinforcement Learning is to \textbf{find a good set of training hyperparameters}.
+
+\CourseFigure{optuna-logo.png}{Optuna library logo. \protect\href{https://raw.githubusercontent.com/optuna/optuna/master/docs/image/optuna-logo.png}{[original image]}}
+
+\href{https://optuna.org/}{Optuna} is a library that helps you to automate the search. In this Unit, we'll study a \textbf{little bit of the theory behind automatic hyperparameter tuning}. We'll first try to optimize the parameters of the DQN studied in the last unit manually. We'll then \textbf{learn how to automate the search using Optuna}.
+
+\section{Optuna Tutorial}\label{optuna}
+
+The content below comes from \href{https://araffin.github.io/tools-for-robotic-rl-icra2022/}{Antonin's Raffin ICRA 2022 presentations}, he's one of the founders of Stable-Baselines and RL-Baselines3-Zoo.
+
+\subsection{The theory behind Hyperparameter tuning}
+
+\begin{coursenote}
+  \textbf{Video lecture: The theory behind Hyperparameter tuning}\par
+  \href{https://www.youtube.com/watch?v=AidFTOdGNFQ}{Watch on YouTube (AidFTOdGNFQ)}.
+\end{coursenote}
+
+\subsection{Optuna Tutorial}
+
+\begin{coursenote}
+  \textbf{Video tutorial: Optuna}\par
+  \href{https://www.youtube.com/watch?v=ihP7E76KGOI}{Watch on YouTube (ihP7E76KGOI)}.
+\end{coursenote}
+
+The notebook $\rightarrow$ \href{https://colab.research.google.com/github/araffin/tools-for-robotic-rl-icra2022/blob/main/notebooks/optuna_lab.ipynb}{here}.
+
+\section{Hands-on}\label{hands-on}
+
+Now that you've learned to use Optuna, here are some ideas to apply what you've learned:
+
+\begin{enumerate}[label=\textbf{\arabic*.},leftmargin=1.8em,itemsep=0.6em]
+  \item \textbf{Beat your LunarLander-v2 agent results}, by using Optuna to find a better set of hyperparameters. You can also try with another environment, such as MountainCar-v0 and CartPole-v1.
+  \item \textbf{Beat your SpaceInvaders agent results}.
+\end{enumerate}
+
+By doing this, you'll see how valuable and powerful Optuna can be in training better agents.
+
+Have fun!
+
+Finally, we would love \textbf{to hear what you think of the course and how we can improve it}. If you have some feedback then please $\rightarrow$ \href{https://forms.gle/BzKXWzLAGZESGNaE9}{fill out this form}.
+
+\subsection*{Keep Learning, stay awesome}
+
+\end{document}

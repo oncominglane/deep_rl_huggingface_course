@@ -1,0 +1,938 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 7 (complete MDX study edition).
+% Compile with latexmk -pdf from the notes/ directory.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit7/}}
+% Common preamble is unchanged; override running headers locally.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Hugging Face Deep RL / Модуль 7}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Многоагентное RL}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 7: Многоагентное обучение с подкреплением}
+\author{Курс Hugging Face Deep RL\\\small Полная учебная версия на основе MDX}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Источник: курс Deep RL от Hugging Face (оригинальные материалы на английском языке).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Введение}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Обложка курса глубокого обучения с подкреплением Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit0/thumbnail.png}{[оригинал]}}
+
+С самого начала курса мы учились обучать агентов в \emph{одноагентной системе}, где агент находился в среде один: он \textbf{не сотрудничал и не взаимодействовал с другими агентами}.
+
+Этот подход хорошо работал, а одноагентные системы полезны во множестве приложений.
+
+\CourseFigure{patchwork.jpg}{Коллаж сред, в которых вы обучали агентов с начала курса \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/patchwork.jpg}{[оригинал]}}
+
+Но мы, люди, \textbf{живём в многоагентном мире}. Наш интеллект развивается во взаимодействии с другими участниками. Поэтому наша \textbf{цель --- создавать агентов, способных взаимодействовать с людьми и другими агентами}.
+
+Следовательно, нам нужно изучить обучение агентов с помощью глубокого обучения с подкреплением в \emph{многоагентной системе}, чтобы строить устойчивых агентов, способных адаптироваться, сотрудничать и конкурировать.
+
+Сегодня мы \textbf{познакомимся с основами увлекательной области многоагентного обучения с подкреплением (MARL)}.
+
+Самое интересное: в этом модуле вы впервые обучите агентов в многоагентной системе --- \textbf{футбольную команду из двух агентов, которая должна победить команду соперников в матче 2 на 2}.
+
+\subsection{Уведомление о поддержке курса}\label{course-maintenance-notice-maintenance-notice}
+
+Обратите внимание: \textbf{курс Deep Reinforcement Learning теперь поддерживается в ограниченном режиме}. Тем не менее он \textbf{по-прежнему остаётся прекрасным ресурсом для изучения теории и практики глубокого обучения с подкреплением}.
+
+Необходимо учитывать следующее:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Модуль 7 (AI vs AI)}: сейчас этот функционал не работает. Однако вы по-прежнему можете обучить агента играть в футбол и наблюдать за его поведением. Таблица лидеров соревнования AI vs AI по футболу была отключена.
+\end{itemize}
+
+\CourseFigure{soccertwos_anim.png}{SoccerTwos: футбольная среда Unity ML-Agents для игры два на два (команда Unity ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/soccertwos.gif}{[оригинальная анимация]}}
+
+Итак, приступим!
+
+\section[Введение в многоагентное обучение с подкреплением (MARL)]{Введение в многоагентное обучение\texorpdfstring{\\}{ } с подкреплением (MARL)}\label{an-introduction-to-multi-agents-reinforcement-learning-marl}
+
+\subsection{От одного агента к нескольким}\label{from-single-agent-to-multiple-agents}
+
+В первом модуле мы научились обучать агентов в одноагентной системе. Агент оставался в среде один: \textbf{он не сотрудничал и не взаимодействовал с другими агентами}.
+
+\CourseFigure{patchwork.jpg}{Коллаж сред, в которых вы обучали агентов с начала курса \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/patchwork.jpg}{[оригинал]}}
+
+При многоагентном обучении с подкреплением (MARL) в одной среде действует несколько агентов, \textbf{которые совместно используют эту среду и взаимодействуют друг с другом}.
+
+Представьте, например, склад, на котором \textbf{нескольким роботам необходимо перемещаться, чтобы загружать и разгружать посылки}.
+
+\CourseFigure{warehouse.jpg}{Автономные складские роботы, иллюстрация upklyak (\protect\href{https://www.freepik.com/free-vector/robots-warehouse-interior-automated-machines_32117680.htm}{Freepik}). \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/warehouse.jpg}{[оригинал]}}
+
+Или дорогу, по которой едут \textbf{несколько беспилотных автомобилей}.
+
+\CourseFigure{selfdrivingcar.jpg}{Взаимодействие беспилотных автомобилей на дороге, иллюстрация jcomp (\protect\href{https://www.freepik.com/free-vector/autonomous-smart-car-automatic-wireless-sensor-driving-road-around-car-autonomous-smart-car-goes-scans-roads-observe-distance-automatic-braking-system_26413332.htm}{Freepik}). \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/selfdrivingcar.jpg}{[оригинал]}}
+
+В этих примерах \textbf{несколько агентов взаимодействуют со средой и друг с другом}. Возникает необходимость описать многоагентную систему. Но сначала разберём типы многоагентных сред.
+
+\subsection{Типы многоагентных сред}\label{different-types-of-multi-agent-environments}
+
+Поскольку в многоагентной системе агенты взаимодействуют друг с другом, можно выделить несколько типов сред:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Кооперативные среды}: агенты стремятся \textbf{максимизировать общую выгоду}.
+\end{itemize}
+
+Например, на складе \textbf{роботы должны сотрудничать, чтобы загружать и разгружать посылки эффективно, то есть как можно быстрее}.
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Конкурентные (состязательные) среды}: здесь каждый агент \textbf{стремится максимизировать собственную выгоду, одновременно снижая результат противника}.
+\end{itemize}
+
+Например, в теннисе \textbf{каждый агент стремится победить другого}.
+
+\CourseFigure{tennis.png}{Соперничество двух агентов в теннисе \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/tennis.png}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Смешанные среды, сочетающие конкуренцию и сотрудничество}: как в SoccerTwos. Два агента входят в одну команду (синюю или фиолетовую); им нужно сотрудничать друг с другом и победить команду соперников.
+\end{itemize}
+
+\CourseFigure{soccertwos_anim.png}{SoccerTwos: футбольная среда Unity ML-Agents для игры два на два (команда Unity ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/soccertwos.gif}{[оригинальная анимация]}}
+
+Теперь возникает вопрос: как проектировать такие многоагентные системы? Иначе говоря, \textbf{как обучать агентов в многоагентной постановке}?
+
+\section{Проектирование многоагентных систем}\label{designing-multi-agents-systems}
+
+В этом разделе вы посмотрите замечательное введение в многоагентные системы от \href{https://www.youtube.com/channel/UCq0imsn84ShAe9PBOFnoIrg}{Брайана Дугласа}.
+
+\href{https://www.youtube.com/watch?v=qgb0gyrpiGk}{Посмотреть оригинальную лекцию о проектировании многоагентных систем на YouTube}
+
+В этом видео Брайан объясняет принципы проектирования многоагентных систем. В качестве примера он рассматривает систему роботов-пылесосов и задаётся вопросом: \textbf{как организовать их сотрудничество}?
+
+Есть два подхода к проектированию такой системы многоагентного обучения с подкреплением (MARL).
+
+\subsection{Децентрализованная система}\label{decentralized-system}
+
+\CourseFigure{decentralized.png}{Децентрализованное обучение нескольких роботов-пылесосов (Брайан Дуглас: введение в многоагентное RL) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/decentralized.png}{[оригинал]}}
+
+При децентрализованном обучении \textbf{каждый агент обучается независимо от остальных}. В приведённом примере каждый пылесос учится убирать как можно большую площадь, \textbf{не учитывая действия других пылесосов (агентов)}.
+
+Преимущество состоит в том, что \textbf{агенты не обмениваются информацией, поэтому таких пылесосов можно проектировать и обучать так же, как обычных одиночных агентов}.
+
+Идея в том, что \textbf{обучаемый агент считает остальных агентов частью динамики окружающей среды}, а не самостоятельными агентами.
+
+Однако главный недостаток такого подхода --- \textbf{нестационарность среды}: базовый марковский процесс принятия решений со временем меняется, поскольку остальные агенты тоже взаимодействуют со средой. Для многих алгоритмов обучения с подкреплением это проблема: \textbf{в нестационарной среде они не способны гарантированно достичь глобального оптимума}.
+
+\subsection{Централизованный подход}\label{centralized-approach}
+
+\CourseFigure{centralized.png}{Централизованное обучение нескольких агентов на основе общего опыта (Брайан Дуглас) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/centralized.png}{[оригинал]}}
+
+В этой архитектуре \textbf{существует процесс верхнего уровня, собирающий опыт всех агентов}, то есть буфер опыта. По собранным данным мы будем \textbf{обучать общую политику}.
+
+Например, в задаче с роботами-пылесосами наблюдение включает:
+
+\begin{itemize}
+\tightlist
+\item
+  Карту покрытой пылесосами площади.
+\item
+  Положения всех пылесосов.
+\end{itemize}
+
+Мы используем общий опыт, \textbf{чтобы обучить политику, управляющую всеми тремя роботами с наибольшей совокупной выгодой}. Каждый робот таким образом обучается на совместном опыте. Среда становится стационарной, поскольку все агенты рассматриваются как одна большая сущность и изменения их политик известны (ведь используется общая политика).
+
+Подведём итог:
+
+\begin{itemize}
+\tightlist
+\item
+  При \emph{децентрализованном подходе} мы \textbf{рассматриваем всех агентов независимо и не учитываем существование остальных}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Каждый агент \textbf{считает других агентов частью окружающей среды}.
+  \item
+    \textbf{Условия среды нестационарны}, поэтому гарантии сходимости отсутствуют.
+  \end{itemize}
+\item
+  При \emph{централизованном подходе}:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \textbf{Общая политика обучается на опыте всех агентов}.
+  \item
+    Политика получает на вход текущее состояние среды и выдаёт совместные действия агентов.
+  \item
+    Вознаграждение является общим.
+  \end{itemize}
+\end{itemize}
+
+\section{Self-Play: классический метод обучения агентов в состязательных играх}\label{self-play-a-classic-technique-to-train-competitive-agents-in-adversarial-games}
+
+Теперь, когда мы разобрали основы многоагентных систем, можно углубиться в тему. Как говорилось во введении, мы будем \textbf{обучать агентов в состязательной игре SoccerTwos --- футболе 2 на 2}.
+
+\CourseFigure{soccertwos_anim.png}{SoccerTwos: футбольная среда Unity ML-Agents для игры два на два (команда Unity ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/soccertwos.gif}{[оригинальная анимация]}}
+
+\subsection{Что такое Self-Play?}\label{what-is-self-play}
+
+Правильно обучить агентов в состязательной игре бывает \textbf{довольно сложно}.
+
+С одной стороны, нужно найти достаточно хорошо обученного соперника, против которого будет играть наш агент. С другой --- если соперник окажется слишком сильным, как наш агент сможет улучшать политику?
+
+Представьте ребёнка, который только начал учиться играть в футбол. Игра против очень опытного футболиста будет бесполезной: ребёнку будет крайне трудно победить или хотя бы время от времени завладевать мячом. Он станет постоянно проигрывать, не успевая освоить хорошую стратегию.
+
+Лучше всего было бы \textbf{подобрать соперника примерно того же уровня, что и агент, и повышать уровень соперника по мере улучшения самого агента}. Слишком сильный соперник не даст ничему научиться; слишком слабый заставит переобучиться на бесполезном поведении, которое не поможет против более сильного противника.
+
+Этот подход называется \emph{Self-Play (игра с самим собой)}. При Self-Play \textbf{агент использует в качестве соперника предыдущие копии самого себя, то есть своей политики}. Так он играет против сопоставимого по силе противника, сталкивается с посильным вызовом, постепенно улучшает политику и обновляет соперника, когда становится сильнее. Это способ последовательно усложнять противника и обеспечивать обучение по нарастающей.
+
+Люди в соревнованиях учатся похожим образом:
+
+\begin{itemize}
+\tightlist
+\item
+  Сначала тренируются против соперника примерно своего уровня.
+\item
+  Затем учатся на этом опыте и, приобретая навыки, переходят к более сильным соперникам.
+\end{itemize}
+
+То же самое происходит при Self-Play:
+
+\begin{itemize}
+\tightlist
+\item
+  Мы \textbf{начинаем с копии нашего агента в качестве соперника}, поэтому их уровни примерно одинаковы.
+\item
+  Мы \textbf{учимся на игре с ним}, а по мере приобретения новых навыков \textbf{обновляем соперника, используя более свежую копию обучаемой политики}.
+\end{itemize}
+
+Сама идея Self-Play не нова. Её использовали ещё в системе игры в шашки Артура Сэмюэла в 1950-х годах и в TD-Gammon Джеральда Тезауро в 1995 году. Если хотите узнать больше об истории Self-Play, \href{https://blog.unity.com/technology/training-intelligent-adversaries-using-self-play-with-ml-agents}{прочитайте отличную статью Эндрю Коэна}.
+
+\subsection{Self-Play в ML-Agents}\label{self-play-in-mlagents}
+
+Self-Play встроен в библиотеку ML-Agents и управляется несколькими гиперпараметрами, которые мы рассмотрим. Однако основная задача, как подчёркивается в документации, --- \textbf{найти баланс между уровнем навыка и способностью итоговой политики к обобщению, с одной стороны, и стабильностью обучения --- с другой}.
+
+Обучение против небольшого разнообразия медленно изменяющихся или неизменных соперников \textbf{делает обучение стабильнее. Но если соперники изменяются слишком медленно, возникает риск переобучения}.
+
+Поэтому нужно контролировать следующие параметры:
+
+\begin{itemize}
+\item
+  \textbf{Частоту смены соперников} с помощью \texttt{swap\_steps} и \texttt{team\_change}.
+\item
+  \textbf{Число сохраняемых соперников} с помощью \texttt{window}. Чем больше значение \texttt{window}, тем разнообразнее будет пул соперников агента: в него войдут политики, полученные на более ранних этапах обучения.
+\item
+  \textbf{Вероятность игры против текущей версии агента или соперника из пула} задаёт \texttt{play\_against\_latest\_model\_ratio}. Более высокое значение означает, что агент чаще играет против текущей версии соперника.
+\item
+  \textbf{Число шагов обучения до сохранения нового соперника} задаёт \texttt{save\_steps}. Большее значение позволяет получить соперников с более широким диапазоном навыков и, возможно, стилей игры, поскольку каждая версия политики обучается дольше.
+\end{itemize}
+
+Подробное описание этих гиперпараметров можно найти \href{https://github.com/Unity-Technologies/ml-agents/blob/develop/docs/Training-Configuration-File.md\#self-play}{в соответствующем разделе документации}.
+
+\subsection{Рейтинг Elo для оценки агента}\label{the-elo-score-to-evaluate-our-agent}
+
+\subsubsection{Что такое рейтинг Elo?}\label{what-is-elo-score}
+
+В состязательных играх \textbf{суммарное вознаграждение не всегда является содержательной метрикой прогресса обучения}, поскольку оно \textbf{зависит также от уровня соперника}.
+
+Вместо него применяется \textbf{\emph{рейтинговая система Elo}} (названа по имени Арпада Эло), оценивающая \textbf{относительный уровень мастерства} двух участников из некоторой популяции в игре с нулевой суммой.
+
+В игре с нулевой суммой один агент выигрывает, а другой проигрывает. Математически это ситуация, в которой выигрыш или потеря полезности одного участника \textbf{в точности уравновешивается выигрышем или потерей полезности остальных}. Поэтому суммарная полезность всех участников равна нулю.
+
+Рейтинг Elo (часто начальное значение равно 1200) может сначала уменьшаться, но в ходе обучения должен постепенно расти.
+
+Система Elo \textbf{опирается на поражения и ничьи в играх с другими участниками}. Следовательно, рейтинг игрока зависит \textbf{от рейтингов его соперников и результатов матчей с ними}.
+
+Показатель Elo характеризует относительное мастерство игрока в игре с нулевой суммой. \textbf{Он называется относительным, поскольку зависит от результатов соперников}.
+
+Основная идея состоит в том, что результаты игрока рассматриваются \textbf{как нормально распределённая случайная величина}.
+
+Разница в рейтингах двух игроков служит \textbf{предиктором исхода матча}. Если игрок выигрывает, но вероятность его победы изначально была высокой, он получает совсем немного очков, поскольку уже считается значительно сильнее соперника.
+
+После каждой игры:
+
+\begin{itemize}
+\tightlist
+\item
+  Победитель \textbf{получает очки за счёт проигравшего}.
+\item
+  Число передаваемых очков определяется \textbf{разностью рейтингов двух игроков (отсюда относительность)}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Если побеждает игрок с более высоким рейтингом $\rightarrow$, он получает мало очков от игрока с низким рейтингом.
+  \item
+    Если побеждает игрок с более низким рейтингом $\rightarrow$, он получает много очков от игрока с высоким рейтингом.
+  \item
+    При ничьей $\rightarrow$ игрок с более низким рейтингом получает немного очков от игрока с более высоким рейтингом.
+  \end{itemize}
+\end{itemize}
+
+Итак, если рейтинги игроков A и B равны $R_A$ и $R_B$, то \textbf{ожидаемые результаты} вычисляются по формулам:
+
+\CourseFigure{elo1.png}{Формула ожидаемого результата Elo для двух игроков \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/elo1.png}{[оригинал]}}
+
+После окончания игры нужно обновить фактический рейтинг Elo каждого игрока. Применяется линейная корректировка, \textbf{пропорциональная величине, на которую результат превысил или не достиг ожидаемого}.
+
+Также задаётся максимальное изменение рейтинга за игру --- коэффициент $K$.
+
+\begin{itemize}
+\tightlist
+\item
+  $K=16$ --- для мастеров.
+\item
+  $K=32$ --- для более слабых игроков.
+\end{itemize}
+
+Если игрок A имеет ожидаемый результат $E_A$, а фактический равен $S_A$, новый рейтинг рассчитывается по формуле:
+
+\CourseFigure{elo2.png}{Формула обновления рейтинга Elo после матча \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/elo2.png}{[оригинал]}}
+
+\subsubsection{Пример}\label{example}
+
+Рассмотрим пример:
+
+Рейтинг игрока A равен 2600.
+
+Рейтинг игрока B равен 2300.
+
+\begin{itemize}
+\tightlist
+\item
+  Сначала вычислим ожидаемый результат:
+\end{itemize}
+
+\(E_{A} = \frac{1}{1+10^{(2300-2600)/400}} = 0.849\)
+
+\(E_{B} = \frac{1}{1+10^{(2600-2300)/400}} = 0.151\)
+
+\begin{itemize}
+\tightlist
+\item
+  Если организаторы установили $K=16$ и победил A, новый рейтинг составит:
+\end{itemize}
+
+\(ELO_A = 2600 + 16*(1-0.849) = 2602\)
+
+\(ELO_B = 2300 + 16*(0-0.151) = 2298\)
+
+\begin{itemize}
+\tightlist
+\item
+  Если организаторы установили $K=16$ и победил B, новый рейтинг составит:
+\end{itemize}
+
+\(ELO_A = 2600 + 16*(0-0.849) = 2586\)
+
+\(ELO_B = 2300 + 16 *(1-0.151) = 2314\)
+
+\subsubsection{Преимущества}\label{the-advantages}
+
+Система Elo обладает несколькими преимуществами:
+
+\begin{itemize}
+\tightlist
+\item
+  Очки \textbf{всегда сбалансированы}: при неожиданном результате передаётся больше очков, но их общая сумма остаётся прежней.
+\item
+  Это \textbf{самокорректирующаяся система}: победив слабого соперника, игрок получает лишь несколько очков.
+\item
+  Система \textbf{подходит для командных игр}: для каждой команды вычисляется средний рейтинг, который затем используется в Elo.
+\end{itemize}
+
+\subsubsection{Недостатки}\label{the-disadvantages}
+
+\begin{itemize}
+\tightlist
+\item
+  Elo \textbf{не учитывает индивидуальный вклад} каждого участника команды.
+\item
+  Дефляция рейтинга: \textbf{чтобы поддерживать высокий рейтинг, необходимо долго сохранять высокий уровень игры}.
+\item
+  \textbf{Нельзя напрямую сопоставлять исторические значения рейтинга}.
+\end{itemize}
+
+\section{Практическое задание}\label{hands-on}
+
+Теперь, когда вы изучили основы многоагентных систем, пришло время обучить первых агентов в такой среде: \textbf{футбольную команду 2 на 2, которая должна победить соперников}.
+
+Также вам предлагается участвовать в соревнованиях AI vs.~AI, где обученный агент будет каждый день соревноваться с \textbf{агентами других участников и попадать в рейтинг}.
+
+Для зачёта этого практического задания в рамках сертификации достаточно загрузить обученную модель. \textbf{Минимального порога результатов для зачёта нет}.
+
+Подробнее о сертификации см. \url{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}.
+
+Это практическое задание отличается от предыдущих: для получения хорошего результата \textbf{агентов потребуется обучать от четырёх до восьми часов}. Из-за риска ограничения времени в Colab авторы рекомендуют запускать обучение на собственном компьютере. Суперкомпьютер не нужен: обычного ноутбука для упражнения достаточно.
+
+Приступим!
+
+\subsection{Что такое AI vs.~AI?}\label{what-is-ai-vs.-ai}
+
+AI vs.~AI --- инструмент с открытым исходным кодом, разработанный в Hugging Face для соревнования агентов, опубликованных на Hub, в многоагентных средах. Затем модели ранжируются в таблице лидеров.
+
+Цель инструмента --- обеспечить надёжную оценку: \textbf{сравнивая своего агента со множеством других, вы получаете хорошее представление о качестве его политики}.
+
+Точнее, AI vs.~AI состоит из трёх инструментов:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Система подбора соперников (matchmaking)} определяет пары моделей и запускает матчи фоновым заданием в Space.
+\item
+  \emph{Таблица лидеров} получает историю матчей и показывает рейтинги Elo моделей: \url{https://huggingface.co/spaces/huggingface-projects/AIvsAI-SoccerTwos}.
+\item
+  \emph{Демонстрационный Space} позволяет посмотреть, как агенты играют друг против друга: \url{https://huggingface.co/spaces/unity/ML-Agents-SoccerTwos}.
+\end{itemize}
+
+Кроме этих трёх инструментов участник курса cyllum создал SoccerTwos Challenge Analytics для просмотра подробных результатов матчей конкретной модели: \url{https://huggingface.co/spaces/cyllum/soccertwos-analytics}.
+
+Подробности описаны \href{https://huggingface.co/blog/aivsai}{в статье команды о системе AI vs.~AI}, но общая схема работы следующая:
+
+\begin{itemize}
+\tightlist
+\item
+  Каждые четыре часа алгоритм \textbf{загружает список всех доступных моделей для заданной среды (в нашем случае ML-Agents-SoccerTwos)}.
+\item
+  Он формирует \textbf{очередь матчей с помощью алгоритма подбора соперников}.
+\item
+  Матч моделируется в Unity без графического интерфейса, а \textbf{результат сохраняется} в Dataset: 1, если выиграла первая модель; 0,5 при ничьей; 0, если выиграла вторая.
+\item
+  После завершения всех матчей очереди \textbf{обновляются рейтинги Elo всех моделей и таблица лидеров}.
+\end{itemize}
+
+\subsubsection{Правила соревнования}\label{competition-rules}
+
+Первое соревнование AI vs.~AI \textbf{носит экспериментальный характер}: цель --- улучшать инструмент благодаря отзывам участников. Поэтому во время соревнования \textbf{возможны сбои}. Однако \textbf{все результаты сохраняются в наборе данных, и вычисления можно перезапустить без потери информации}.
+
+Чтобы модель корректно сравнивалась с остальными, необходимо соблюдать правила:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Нельзя изменять пространство наблюдений или пространство действий агента}. Иначе модель не будет работать при оценивании.
+\item
+  \textbf{Пока нельзя применять собственный обучающий алгоритм}: необходимо использовать тренеры Unity ML-Agents.
+\item
+  Авторы предоставляют исполняемые файлы сред для обучения. При желании можно использовать редактор Unity, \textbf{но во избежание ошибок рекомендуется использовать готовые исполняемые файлы}.
+\end{enumerate}
+
+Основное различие в результатах участников будут определять \textbf{выбранные гиперпараметры}.
+
+Авторы постоянно улучшают учебные материалы. Поэтому \textbf{если вы нашли проблему в ноутбуке}, \href{https://github.com/huggingface/deep-rl-class/issues}{создайте обращение в GitHub-репозитории}.
+
+\subsubsection{Общение с участниками и вопросы в Discord}\label{chat-with-your-classmates-share-advice-and-ask-questions-on-discord}
+
+\begin{itemize}
+\tightlist
+\item
+  Для обмена советами и вопросами был создан канал \texttt{ai-vs-ai-challenge}.
+\item
+  Если вы ещё не присоединились к Discord-серверу, \href{https://discord.gg/ydHrjt3WP5}{перейдите по приглашению}.
+\end{itemize}
+
+\subsection{Шаг 0: установка ML-Agents и загрузка среды}\label{step-0-install-mlagents-and-download-the-correct-executable}
+
+Авторы советуют использовать \href{https://docs.conda.io/en/latest/}{conda} как менеджер пакетов и создать новое окружение.
+
+С помощью conda создадим окружение с именем \texttt{rl} и \textbf{Python 3.10.12}:
+
+\begin{lstlisting}
+conda create --name rl python=3.10.12
+conda activate rl
+\end{lstlisting}
+
+Для корректного обучения агентов и загрузки моделей на Hub нужно установить ML-Agents.
+
+\begin{lstlisting}
+git clone https://github.com/Unity-Technologies/ml-agents
+\end{lstlisting}
+
+После клонирования репозитория (он занимает 2,63~ГБ) перейдём в него и установим пакеты.
+
+\begin{lstlisting}
+cd ml-agents
+pip install -e ./ml-agents-envs
+pip install -e ./ml-agents
+\end{lstlisting}
+
+У пользователей Mac на Apple Silicon при установке возможны проблемы (например, не удаётся собрать пакет ONNX). Сначала стоит попробовать установить grpcio:
+
+\begin{lstlisting}
+conda install grpcio
+\end{lstlisting}
+
+Также может помочь \href{https://github.com/Unity-Technologies/ml-agents/issues/6019}{эта проблема на GitHub} в официальном репозитории ML-Agents.
+
+Наконец, нужно установить git-lfs: \url{https://git-lfs.com/}.
+
+После установки необходимо добавить исполняемый файл обучающей среды. В зависимости от операционной системы скачайте соответствующий архив, распакуйте его и поместите в новую папку \texttt{training-envs-executables} внутри \texttt{ml-agents}.
+
+В итоге исполняемый файл должен находиться по следующему пути:\par\noindent\path{ml-agents/training-envs-executables/SoccerTwos}.
+
+Windows: скачайте \href{https://drive.google.com/file/d/1sqFxbEdTMubjVktnV4C6ICjp89wLhUcP/view?usp=sharing}{этот исполняемый файл}.
+
+Linux (Ubuntu): скачайте \href{https://drive.google.com/file/d/1KuqBKYiXiIcU4kNMqEzhgypuFP5_45CL/view?usp=sharing}{этот исполняемый файл}.
+
+Mac: скачайте \href{https://drive.google.com/drive/folders/1h7YB0qwjoxxghApQdEUQmk95ZwIDxrPG?usp=share_link}{этот исполняемый файл}. Внимание: на Mac также необходимо выполнить \texttt{xattr\ -cr\ training-envs-executables/SoccerTwos/SoccerTwos.app}, чтобы запустить SoccerTwos.
+
+\subsection{Шаг 1: знакомство со средой}\label{step-1-understand-the-environment}
+
+Среда называется \texttt{SoccerTwos}. Её разработала команда Unity ML-Agents. Документация доступна \href{https://github.com/Unity-Technologies/ml-agents/blob/develop/docs/Learning-Environment-Examples.md\#soccer-twos}{по ссылке}.
+
+Цель в этой среде --- \textbf{забить мяч в ворота соперника и не дать ему попасть в собственные ворота}.
+
+\CourseFigure{soccertwos_anim.png}{SoccerTwos: футбольная среда Unity ML-Agents для игры два на два (команда Unity ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/soccertwos.gif}{[оригинальная анимация]}}
+
+\subsubsection{Функция вознаграждения}\label{the-reward-function}
+
+Функция вознаграждения имеет следующий вид:
+
+\CourseFigure{soccerreward.png}{SoccerTwos: функция вознаграждения среды \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/soccerreward.png}{[оригинал]}}
+
+\subsubsection{Пространство наблюдений}\label{the-observation-space}
+
+Пространство наблюдений состоит из векторов размерности 336:
+
+\begin{itemize}
+\tightlist
+\item
+  11 лучей, направленных вперёд и распределённых по сектору 120 градусов (264 компоненты состояния).
+\item
+  3 луча, направленных назад и распределённых по сектору 90 градусов (72 компоненты состояния).
+\item
+  Эти лучи способны распознавать шесть типов объектов:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Мяч.
+  \item
+    Синие ворота.
+  \item
+    Фиолетовые ворота.
+  \item
+    Стена.
+  \item
+    Синий агент.
+  \item
+    Фиолетовый агент.
+  \end{itemize}
+\end{itemize}
+
+\subsubsection{Пространство действий}\label{the-action-space}
+
+Пространство действий состоит из трёх дискретных ветвей:
+
+\CourseFigure{socceraction.png}{SoccerTwos: дискретное и непрерывное пространства действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/socceraction.png}{[оригинал]}}
+
+\subsection{Шаг 2: знакомство с MA-POCA}\label{step-2-understand-ma-poca}
+
+Мы уже знаем, как обучать агентов играть против других: \textbf{можно использовать Self-Play}. Для матчей 1 на 1 это прекрасный подход.
+
+Но у нас матч 2 на 2, и в каждой команде по два агента. Как же \textbf{обучать коллективному поведению группы агентов}?
+
+Как объясняется \href{https://blog.unity.com/technology/ml-agents-v20-release-now-supports-training-complex-cooperative-behaviors}{в блоге Unity}, когда команда забивает гол, агенты обычно получают групповое вознаграждение (например, +1 минус штраф). Получается, что \textbf{каждый игрок команды получает вознаграждение, хотя вклад разных игроков в победу неодинаков}. Из-за этого трудно выяснить, как должен действовать каждый агент по отдельности.
+
+Команда Unity ML-Agents разработала решение --- новый многоагентный тренер \emph{MA-POCA (Multi-Agent POsthumous Credit Assignment)}.
+
+Идея проста, но эффективна: централизованный критик \textbf{обрабатывает состояния всех агентов команды и оценивает, насколько хорошо действует каждый из них}. Можно представить критика в роли тренера команды.
+
+Благодаря этому каждый агент может \textbf{принимать решения только по собственным локальным наблюдениям} и \textbf{одновременно оценивать качество своего поведения в контексте всей группы}.
+
+\CourseFigure{mapoca.png}{MA-POCA: централизованное обучение и децентрализованное исполнение (источник: ML-Agents Plays Dodgeball) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/mapoca.png}{[оригинал]}}
+
+Таким образом, решение --- сочетать Self-Play с тренером MA-POCA (в конфигурации он называется \texttt{poca}). MA-POCA помогает обучать кооперативному поведению, а Self-Play --- побеждать команду соперников.
+
+Если хотите разобраться в MA-POCA глубже, прочитайте \href{https://arxiv.org/pdf/2111.05992.pdf}{статью авторов} и материалы из раздела дополнительной литературы.
+
+\subsection{Шаг 3: настройка файла конфигурации}\label{step-3-define-the-config-file}
+
+Из \href{https://huggingface.co/deep-rl-course/unit5/introduction}{модуля 5} мы знаем, что в ML-Agents \textbf{гиперпараметры обучения задаются в файлах \texttt{config.yaml}}.
+
+Гиперпараметров довольно много. Чтобы разобраться в каждом, прочитайте пояснения в \textbf{\href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/Training-Configuration-File.md}{документации}}.
+
+Используемый нами файл конфигурации расположен по пути \texttt{./config/poca/SoccerTwos.yaml}. Он выглядит так:
+
+\begin{lstlisting}
+behaviors:
+  SoccerTwos:
+    trainer_type: poca
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 0.0003
+      beta: 0.005
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: constant
+    network_settings:
+      normalize: false
+      hidden_units: 512
+      num_layers: 2
+      vis_encode_type: simple
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 5
+    max_steps: 5000000
+    time_horizon: 1000
+    summary_freq: 10000
+    self_play:
+      save_steps: 50000
+      team_change: 200000
+      swap_steps: 2000
+      window: 10
+      play_against_latest_model_ratio: 0.5
+      initial_elo: 1200.0
+\end{lstlisting}
+
+По сравнению с Pyramids или SnowballTarget здесь появились дополнительные гиперпараметры Self-Play. Их настройка может иметь решающее значение для хорошего результата.
+
+Совет: сопоставляйте смысл и рекомендуемые значения каждого параметра (особенно параметров Self-Play) с \textbf{\href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/Training-Configuration-File.md}{документацией}}.
+
+После изменения файла конфигурации можно приступать к обучению агентов.
+
+\subsection{Шаг 4: запуск обучения}\label{step-4-start-the-training}
+
+Для обучения агентов нужно \textbf{запустить \texttt{mlagents-learn} и указать исполняемый файл среды}.
+
+Зададим четыре параметра:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \texttt{mlagents-learn\ \textless{}config\textgreater{}}: путь к файлу конфигурации гиперпараметров.
+\item
+  \texttt{-env}: путь к исполняемому файлу среды.
+\item
+  \texttt{-run\_id}: идентификатор запуска обучения.
+\item
+  \texttt{-no-graphics}: отключение графического отображения в процессе обучения.
+\end{enumerate}
+
+В зависимости от оборудования обучение на 5 миллионах временных шагов (рекомендуемое значение, но можно попробовать и 10 миллионов) займёт от пяти до восьми часов. В это время компьютером можно продолжать пользоваться, но лучше отключить переход в спящий режим, чтобы обучение не прервалось.
+
+Команда запуска зависит от исполняемого файла для Windows, Ubuntu или macOS. Путь к файлу у вас может отличаться, поэтому проверьте его перед запуском.
+
+Для Windows команда может выглядеть так:
+
+\begin{lstlisting}
+mlagents-learn ./config/poca/SoccerTwos.yaml --env=./training-envs-executables/SoccerTwos.exe --run-id="SoccerTwos" --no-graphics
+\end{lstlisting}
+
+Для Mac команда может выглядеть так:
+
+\begin{lstlisting}
+mlagents-learn ./config/poca/SoccerTwos.yaml --env=./training-envs-executables/SoccerTwos/SoccerTwos.app --run-id="SoccerTwos" --no-graphics
+\end{lstlisting}
+
+Исполняемый файл содержит восемь копий среды SoccerTwos.
+
+\textbf{Внимание:} до двух миллионов шагов рейтинг Elo может почти не расти или даже опускаться ниже 1200. Это нормально: сначала агенты большую часть времени перемещаются по полю случайным образом, ещё не умея забивать голы.
+
+\textbf{Внимание:} обучение можно остановить сочетанием Ctrl+C, но нажимать его следует только один раз. Перед завершением ML-Agents должен сформировать итоговый файл \texttt{.onnx}.
+
+\subsection{Шаг 5: публикация агента на Hugging Face Hub}\label{step-5-push-the-agent-to-the-hugging-face-hub}
+
+Теперь, когда агенты обучены, \textbf{мы готовы загрузить их на Hub, чтобы участвовать в соревновании AI vs.~AI и смотреть их игру в браузере}.
+
+Чтобы поделиться моделью с сообществом, нужно выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если у вас ещё нет аккаунта Hugging Face, зарегистрируйтесь: \url{https://huggingface.co/join}.
+\item
+  Войдите в аккаунт и получите токен аутентификации на сайте Hugging Face.
+\end{enumerate}
+
+Создайте новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правом записи (write)}.
+
+\CourseFigure{create-token.jpg}{Создание токена Hugging Face с правом записи \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+Скопируйте токен, запустите следующую команду и вставьте токен:
+
+\begin{lstlisting}
+huggingface-cli login
+\end{lstlisting}
+
+Затем нужно выполнить \texttt{mlagents-push-to-hf}.
+
+У команды четыре параметра:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \texttt{-run-id}: идентификатор запуска обучения.
+\item
+  \texttt{-local-dir}: каталог, в котором сохранён агент; обычно это \texttt{results/}, например \texttt{results/First Training}.
+\item
+  \texttt{-repo-id}: название создаваемого или обновляемого репозитория Hugging Face. Формат всегда \texttt{\textless{}ваш\ логин\textgreater{}/\textless{}имя\ репозитория\textgreater{}}. Если такого репозитория ещё нет, \textbf{он будет создан автоматически}.
+\item
+  \texttt{-\/-commit-message}: сообщение коммита. Репозитории Hugging Face работают на основе Git, поэтому необходимо указать сообщение коммита.
+\end{enumerate}
+
+В моём случае команда выглядит так:
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id="SoccerTwos" --local-dir="./results/SoccerTwos" --repo-id="ThomasSimonini/poca-SoccerTwos" --commit-message="First Push"`
+\end{lstlisting}
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id= # Add your run id  --local-dir= # Your local dir  --repo-id= # Your repo id --commit-message="First Push"
+\end{lstlisting}
+
+Если всё прошло успешно, в конце появится примерно такое сообщение (но с другим адресом):
+
+Модель опубликована на Hub. Посмотреть её можно здесь: \url{https://huggingface.co/ThomasSimonini/poca-SoccerTwos}.
+
+Это ссылка на модель. В репозитории находятся карточка модели с инструкцией по использованию, данные TensorBoard и файл конфигурации. \textbf{Особенно удобно, что это Git-репозиторий: можно хранить разные коммиты, обновлять модель новыми публикациями и так далее}.
+
+\subsection{Шаг 6: проверка готовности модели к AI vs.~AI}\label{step-6-verify-that-your-model-is-ready-for-ai-vs-ai-challenge}
+
+После публикации на Hub \textbf{модель автоматически добавится в пул участников AI vs.~AI}. До появления в таблице лидеров может пройти некоторое время, поскольку матчи проводятся каждые четыре часа.
+
+Чтобы всё работало корректно, проверьте следующее:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  У модели должен быть тег \texttt{ML-Agents-SoccerTwos}. По этому тегу выбираются модели для включения в соревнование. Откройте страницу модели и проверьте её теги.
+\end{enumerate}
+
+\CourseFigure{verify1.png}{Проверка тега ML-Agents-SoccerTwos у модели \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/verify1.png}{[оригинал]}}
+
+Если тега нет, отредактируйте README и добавьте его.
+
+\CourseFigure{verify2.png}{Добавление тега SoccerTwos в карточку модели \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/verify2.png}{[оригинал]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  У модели должен присутствовать файл \texttt{SoccerTwos.onnx}.
+\end{enumerate}
+
+\CourseFigure{verify3.png}{Проверка загрузки файла SoccerTwos.onnx \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit10/verify3.png}{[оригинал]}}
+
+Если вы собираетесь повторно обучать модель или создавать новую версию, авторы настоятельно рекомендуют публиковать её как новую модель на Hub.
+
+\subsection{Шаг 7: просмотр матчей в демонстрации}\label{step-7-visualize-some-match-in-our-demo}
+
+Теперь, когда модель участвует в AI vs.~AI, \textbf{можно посмотреть, насколько хорошо она играет по сравнению с другими}: \url{https://huggingface.co/spaces/unity/ML-Agents-SoccerTwos}.
+
+Для этого откройте демонстрацию:
+
+\begin{itemize}
+\tightlist
+\item
+  Выберите свою модель для синей команды (или фиолетовой, если хотите), а для второй команды --- модель соперника. Лучше всего сравнивать свою модель с лидером рейтинга либо с \href{https://huggingface.co/unity/MLAgents-SoccerTwos}{базовой моделью}.
+\end{itemize}
+
+Матчи, которые вы наблюдаете в реальном времени, не влияют на итоговую оценку, \textbf{но помогают увидеть качество игры агента}.
+
+Не стесняйтесь делиться лучшими результатами своего агента в Discord, в канале \texttt{\#rl-i-made-this}.
+
+\section{Проверка знаний}\label{quiz}
+
+Лучший способ учиться и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{избегать иллюзии компетентности} --- \textbf{проверять себя}. Это позволит понять, \textbf{какие знания нужно закрепить}.
+
+\subsection{Q1: выберите правильное соответствие типов многоагентных сред}\label{q1-chose-the-option-which-fits-better-when-comparing-different-types-of-multi-agent-environments}
+
+\begin{itemize}
+\item
+  Агенты стремятся максимизировать общую выгоду в \_\_\_\_ средах.
+\item
+  Агенты стремятся максимизировать общую выгоду, одновременно уменьшая выгоду соперника, в \_\_\_\_ средах.
+\item
+  \textbf{A.} конкурентных, кооперативных.
+\item
+  \textbf{B.} кооперативных, конкурентных.
+\end{itemize}
+
+\subsection{Q2: какие утверждения верны для децентрализованного обучения?}\label{q2-which-of-the-following-statements-are-true-about-decentralized-learning}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Каждый агент обучается независимо от остальных.
+\item
+  \textbf{B.} Данные о других агентах считаются просто данными окружающей среды.
+\item
+  \textbf{C.} Если считать других агентов частью среды, среда становится стационарной.
+\end{itemize}
+
+\subsection{Q3: какие утверждения верны для централизованного обучения?}\label{q3-which-of-the-following-statements-are-true-about-centralized-learning}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} На основе взаимодействий всех агентов обучается одна общая политика.
+\item
+  \textbf{B.} Вознаграждение является общим.
+\item
+  \textbf{C.} При таком подходе среда стационарна.
+\end{itemize}
+
+\subsection{Q4: своими словами объясните подход Self-Play}\label{q4-explain-in-your-own-words-what-is-the-self-play-approach}
+
+\subsection{Q5: сопоставьте описания с гиперпараметрами Self-Play}\label{q5-when-configuring-self-play-several-parameters-are-important.-could-you-identify-by-their-definition-which-parameter-are-we-talking-about}
+
+\begin{itemize}
+\item
+  Вероятность игры против текущей версии агента по сравнению с противником из пула.
+\item
+  Разнообразие (разброс) уровней подготовки возможных противников.
+\item
+  Количество шагов обучения до создания нового противника.
+\item
+  Частота смены противника.
+\item
+  \textbf{A.} window, play\_against\_latest\_model\_ratio, save\_steps, swap\_steps+team\_change
+\item
+  \textbf{B.} play\_against\_latest\_model\_ratio, save\_steps, window, swap\_steps+team\_change
+\item
+  \textbf{C.} play\_against\_latest\_model\_ratio, window, save\_steps, swap\_steps+team\_change
+\item
+  \textbf{D.} swap\_steps+team\_change, save\_steps, play\_against\_latest\_model\_ratio, window
+\end{itemize}
+
+\subsection{Q6: каковы основные причины использования рейтинга Elo?}\label{q6-what-are-the-main-motivations-to-use-a-elo-rating-score}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Рейтинг учитывает разницу в уровне мастерства вашего агента и соперника.
+\item
+  \textbf{B.} Хотя число передаваемых очков зависит от результата матча и уровней агентов, их общая сумма остаётся неизменной.
+\item
+  \textbf{C.} Агенту легко долго сохранять высокий рейтинг.
+\item
+  \textbf{D.} Рейтинг хорошо учитывает индивидуальный вклад каждого игрока в командный результат.
+\end{itemize}
+
+Поздравляем с завершением теста! Если какие-то темы оказались сложными, вернитесь к соответствующим разделам и закрепите знания.
+
+\subsection{Ответы и пояснения к тесту}\label{quiz-solutions-and-explanations}
+
+\paragraph{Ответ на Q1}
+
+\textbf{Правильный ответ:} B
+
+\textbf{A.} конкурентных, кооперативных. Пояснение: в кооперативной среде нужно максимизировать общую выгоду, а в конкурентной --- также стремиться уменьшить результат соперника.
+
+\textbf{B.} кооперативных, конкурентных.
+
+\paragraph{Ответ на Q2}
+
+\textbf{Правильные ответы:} A, B
+
+\textbf{A.} Каждый агент обучается независимо от остальных.
+
+\textbf{B.} Данные о других агентах считаются просто данными окружающей среды.
+
+\textbf{C.} Если считать других агентов частью среды, среда становится стационарной. Пояснение: при децентрализованном обучении агенты игнорируют других агентов как самостоятельные сущности и рассматривают их как часть среды. Но из-за этого среда постоянно изменяется и становится нестационарной.
+
+\paragraph{Ответ на Q3}
+
+\textbf{Правильные ответы:} A, B, C
+
+\textbf{A.} На основе взаимодействий всех агентов обучается одна общая политика.
+
+\textbf{B.} Вознаграждение является общим.
+
+\textbf{C.} При таком подходе среда стационарна.
+
+\paragraph{Ответ на Q4}
+
+\texttt{Self-Play} --- подход, при котором в роли противников используются копии агента с той же политикой, что и у обучаемого агента. Благодаря этому агент может учиться, соревнуясь с соперниками примерно своего уровня.
+
+\paragraph{Ответ на Q5}
+
+\textbf{Правильный ответ:} C
+
+\textbf{A.} window, play\_against\_latest\_model\_ratio, save\_steps, swap\_steps+team\_change
+
+\textbf{B.} play\_against\_latest\_model\_ratio, save\_steps, window, swap\_steps+team\_change
+
+\textbf{C.} play\_against\_latest\_model\_ratio, window, save\_steps, swap\_steps+team\_change
+
+\textbf{D.} swap\_steps+team\_change, save\_steps, play\_against\_latest\_model\_ratio, window
+
+\paragraph{Ответ на Q6}
+
+\textbf{Правильные ответы:} A, B
+
+\textbf{A.} Рейтинг учитывает разницу в уровне мастерства вашего агента и соперника.
+
+\textbf{B.} Хотя число передаваемых очков зависит от результата матча и уровней агентов, их общая сумма остаётся неизменной.
+
+\textbf{C.} Агенту легко долго сохранять высокий рейтинг. Пояснение: здесь проявляется \texttt{дефляция\ рейтинга} (rating deflation) --- для сохранения высокого рейтинга требуется долго демонстрировать высокий уровень игры.
+
+\textbf{D.} Рейтинг хорошо учитывает индивидуальный вклад каждого игрока в командный результат. Пояснение: Elo учитывает результат всей команды, но не рассчитывает индивидуальный вклад её участников.
+
+\section{Заключение}\label{conclusion}
+
+На сегодня всё. Поздравляем с завершением модуля и практического задания!
+
+Лучший способ учиться --- практиковаться и экспериментировать. \textbf{Почему бы не обучить ещё одного агента с другой конфигурацией?}
+
+Не забывайте время от времени проверять \href{https://huggingface.co/spaces/huggingface-projects/AIvsAI-SoccerTwos}{таблицу лидеров}.
+
+Увидимся в модуле 8!
+
+\subsection{Продолжайте учиться и оставайтесь молодцами}\label{keep-learning-stay-awesome}
+
+\section{Дополнительная литература}\label{additional-readings}
+
+\subsection{Введение в многоагентные системы}\label{an-introduction-to-multi-agents}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://www.dcsc.tudelft.nl/~bdeschutter/pub/rep/10_003.pdf}{Обзор многоагентного обучения с подкреплением}.
+\item
+  \href{https://rlss.inria.fr/files/2019/07/RLSS_Multiagent.pdf}{Многоагентное обучение с подкреплением, Марк Ланкто}.
+\item
+  \href{https://www.mathworks.com/help/reinforcement-learning/ug/train-3-agents-for-area-coverage.html?s_eid=PSM_15028}{Пример многоагентной среды}.
+\item
+  \href{https://agents.inf.ed.ac.uk/blog/multiagent-learning-environments/}{Список различных многоагентных сред}.
+\item
+  \href{https://bit.ly/3nVK7My}{Многоагентное обучение с подкреплением: независимые и сотрудничающие агенты}.
+\item
+  \href{https://bit.ly/3v7LxaT}{Работа с нестационарностью в глубоком многоагентном обучении с подкреплением}.
+\end{itemize}
+
+\subsection{Self-Play и MA-POCA}\label{self-play-and-ma-poca}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://blog.unity.com/technology/training-intelligent-adversaries-using-self-play-with-ml-agents}{Теория Self-Play и её реализация в ML-Agents}.
+\item
+  \href{https://blog.unity.com/technology/ml-agents-v20-release-now-supports-training-complex-cooperative-behaviors}{Обучение сложному кооперативному поведению с ML-Agents}.
+\item
+  \href{https://blog.unity.com/technology/ml-agents-plays-dodgeball}{Как агенты ML-Agents играют в вышибалы}.
+\item
+  \href{https://arxiv.org/pdf/2111.05992.pdf}{О правильном и неправильном использовании поглощающих состояний в многоагентном обучении с подкреплением (MA-POCA)}.
+\end{itemize}
+
+\end{document}

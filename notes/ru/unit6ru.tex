@@ -1,0 +1,872 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 6 (complete MDX study edition).
+% Compile with latexmk -pdf from the notes/ directory.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit6/}}
+% Common preamble is unchanged; override running headers locally.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Hugging Face Deep RL / Модуль 6}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Actor-Critic (A2C)}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 6: Advantage Actor-Critic (A2C)}
+\author{Курс Hugging Face Deep RL\\\small Полная учебная версия на основе MDX}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Источник: курс Deep RL от Hugging Face (оригинальные материалы на английском языке).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Введение}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Введение в методы Actor-Critic: обложка курса \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/thumbnail.png}{[оригинал]}}
+
+В модуле 4 мы познакомились с первым алгоритмом, непосредственно использующим политику, --- \textbf{REINFORCE}.
+
+В методах на основе политики \textbf{мы стремимся оптимизировать саму политику, не используя функцию ценности}. Точнее, REINFORCE относится к подклассу \emph{методов на основе политики}, называемому \emph{методами градиента политики}. В них политика оптимизируется напрямую: \textbf{веса оптимальной политики оцениваются и обновляются методом градиентного подъёма}.
+
+Мы увидели, что REINFORCE работает неплохо. Однако для оценки возврата мы применяем метод Монте-Карло (то есть используем целый эпизод), поэтому \textbf{оценка градиента политики обладает значительной дисперсией}.
+
+Напомним, что оценка градиента политики задаёт \textbf{направление наиболее быстрого увеличения возврата}. Иными словами, она показывает, как менять веса политики, чтобы повысить вероятность действий, приводящих к большому возврату. Дисперсия оценки Монте-Карло, которую мы подробнее рассмотрим в этом модуле, \textbf{замедляет обучение, поскольку для её уменьшения требуется много выборок}.
+
+Поэтому сегодня мы изучим \textbf{методы Actor-Critic («Актор--Критик»)} --- гибридную архитектуру, объединяющую методы на основе ценности и методы на основе политики. Она позволяет стабилизировать обучение за счёт уменьшения дисперсии с помощью двух компонентов:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Актора}, определяющего, \textbf{как ведёт себя агент} (метод на основе политики);
+\item
+  \emph{Критика}, оценивающего, \textbf{насколько хорошо выбранное действие} (метод на основе ценности).
+\end{itemize}
+
+Мы изучим один из таких гибридных методов --- Advantage Actor-Critic (A2C), --- \textbf{и обучим агента в робототехнической среде с помощью Stable-Baselines3}. Для этого научим:
+
+\begin{itemize}
+\tightlist
+\item
+  Роботизированную руку перемещаться в заданное положение.
+\end{itemize}
+
+Звучит интересно? Тогда начнём!
+
+\section{Проблема дисперсии в REINFORCE}\label{the-problem-of-variance-in-reinforce}
+
+В REINFORCE мы хотим \textbf{повышать вероятность действий, совершённых в траектории, пропорционально полученному возврату}.
+
+\CourseFigure{pg.jpg}{Обновление градиента политики в REINFORCE \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/pg.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Если \textbf{возврат велик}, мы \textbf{увеличиваем} вероятности соответствующих пар (состояние, действие).
+\item
+  И наоборот: если \textbf{возврат мал}, мы \textbf{уменьшаем} вероятности соответствующих пар (состояние, действие).
+\end{itemize}
+
+Возврат \(R(\tau)\) вычисляется \emph{методом Монте-Карло}. Мы собираем траекторию и рассчитываем дисконтированный возврат, \textbf{после чего используем его, чтобы увеличить или уменьшить вероятность каждого действия, выполненного в этой траектории}. Если возврат хороший, все действия траектории «подкрепляются»: вероятность их повторения возрастает.
+
+\(R(\tau) = R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + ...\)
+
+Преимущество метода заключается в том, что \textbf{оценка несмещённая: вместо приближённой оценки возврата} мы используем только фактически полученный возврат.
+
+Из-за стохастичности среды (случайных событий во время эпизода) и самой политики \textbf{разные траектории могут давать разные возвраты, что приводит к высокой дисперсии}. Поэтому даже из одного начального состояния мы можем получить сильно различающиеся возвраты. Следовательно, \textbf{возврат из одного и того же состояния может значительно изменяться от эпизода к эпизоду}.
+
+\CourseFigure{variance.jpg}{Дисперсия возвратов Монте-Карло для разных траекторий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/variance.jpg}{[оригинал]}}
+
+Один из способов борьбы с дисперсией --- \textbf{использовать большое количество траекторий в надежде, что случайные отклонения отдельных траекторий усреднятся и дадут оценку «истинного» возврата}.
+
+Однако значительное увеличение размера пакета \textbf{снижает эффективность использования выборок}. Поэтому нужны дополнительные способы уменьшения дисперсии.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Если хочешь подробнее разобраться в компромиссе между смещением и дисперсией в глубоком обучении с подкреплением, прочитай следующие материалы:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://blog.mlreview.com/making-sense-of-the-bias-variance-trade-off-in-deep-reinforcement-learning-79cf1e83d565}{Как понимать компромисс между смещением и дисперсией в глубоком RL}
+\item
+  \href{https://www.endtoend.ai/blog/bias-variance-tradeoff-in-reinforcement-learning/}{Компромисс между смещением и дисперсией в обучении с подкреплением}
+\item
+  \href{https://balajiai.github.io/high_variance_in_policy_gradients}{Высокая дисперсия градиентов политики} ***
+\end{itemize}
+
+\section{Advantage Actor-Critic (A2C)}\label{advantage-actor-critic-a2c}
+
+\subsection{Уменьшение дисперсии с помощью Actor-Critic}\label{reducing-variance-with-actor-critic-methods}
+
+Решение, позволяющее уменьшить дисперсию REINFORCE и обучать агента быстрее и устойчивее, состоит в объединении методов на основе политики и методов на основе ценности: это и есть \emph{Actor-Critic}.
+
+Чтобы понять Actor-Critic, представь, что играешь в видеоигру вместе с другом, который даёт тебе обратную связь. Ты --- Актор, а твой друг --- Критик.
+
+\CourseFigure{ac.jpg}{Актор и Критик: политика и обратная связь от функции ценности \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/ac.jpg}{[оригинал]}}
+
+В начале ты ещё не умеешь играть, \textbf{поэтому пробуешь случайные действия}. Критик наблюдает за ними и \textbf{даёт обратную связь}.
+
+Используя её, \textbf{ты обновляешь политику и постепенно начинаешь играть лучше}.
+
+В то же время твой друг (Критик) тоже улучшает способ оценки твоих действий, чтобы в следующий раз давать более качественные советы.
+
+Это основная идея Actor-Critic. Мы обучаем два приближения функций:
+
+\begin{itemize}
+\item
+  \emph{Политику}, которая \textbf{определяет действия агента}: \(\pi_{\theta}(s)\).
+\item
+  \emph{Функцию ценности}, помогающую обновлять политику и оценивающую, насколько хорошо выбранное действие: \(\hat{q}_{w}(s,a)\).
+\end{itemize}
+
+\subsection{Процесс обучения Actor-Critic}\label{the-actor-critic-process}
+
+Теперь, когда мы разобрали общую идею Actor-Critic, рассмотрим подробнее, как Актор и Критик совместно улучшаются во время обучения.
+
+Как мы уже увидели, в методе Actor-Critic имеются два приближения функций (две нейронные сети):
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Актор} --- \textbf{функция политики} с параметрами \(\theta\): \(\pi_{\theta}(s)\).
+\item
+  \emph{Критик} --- \textbf{функция ценности} с параметрами \(w\): \(\hat{q}_{w}(s,a)\).
+\end{itemize}
+
+Рассмотрим процесс обучения, чтобы понять, как оптимизируются Актор и Критик:
+
+\begin{itemize}
+\item
+  На каждом шаге \(t\) мы получаем из среды текущее состояние \(S_t\) и \textbf{передаём его на вход Актору и Критику}.
+\item
+  Политика получает состояние и \textbf{выдаёт действие} \(A_t\).
+\end{itemize}
+
+\CourseFigure{step1.jpg}{Процесс обучения Actor-Critic: Актор выбирает действие \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Критик также получает это действие и, используя \(S_t\) и \(A_t\), \textbf{оценивает ценность выполнения данного действия в данном состоянии --- Q-значение}.
+\end{itemize}
+
+\CourseFigure{step2.jpg}{Процесс Actor-Critic: Критик оценивает пару «состояние--действие» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/step2.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  После выполнения действия \(A_t\) среда возвращает новое состояние \(S_{t+1}\) и вознаграждение \(R_{t+1}\).
+\end{itemize}
+
+\CourseFigure{step3.jpg}{Процесс Actor-Critic: среда возвращает вознаграждение и следующее состояние \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/step3.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Актор обновляет параметры политики, используя Q-значение.
+\end{itemize}
+
+\CourseFigure{step4.jpg}{Процесс Actor-Critic: обновление Актора по Q-значению \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/step4.jpg}{[оригинал]}}
+
+\begin{itemize}
+\item
+  Благодаря обновлённым параметрам Актор выбирает следующее действие \(A_{t+1}\), исходя из нового состояния \(S_{t+1}\).
+\item
+  Затем Критик обновляет параметры своей функции ценности.
+\end{itemize}
+
+\CourseFigure{step5.jpg}{Процесс Actor-Critic: обновление Критика \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/step5.jpg}{[оригинал]}}
+
+\subsection{Добавление функции преимущества в Actor-Critic (A2C)}\label{adding-advantage-in-actor-critic-a2c}
+
+Можно дополнительно стабилизировать обучение, \textbf{используя функцию преимущества (Advantage) вместо функции ценности действия для обучения Актора}.
+
+Функция преимущества вычисляет относительную полезность действия по сравнению с другими действиями, доступными в данном состоянии: \textbf{насколько выполнение этого действия лучше средней ценности состояния}. Для этого из ценности пары (состояние, действие) вычитается ценность состояния:
+
+\CourseFigure{advantage1.jpg}{Определение функции преимущества \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/advantage1.jpg}{[оригинал]}}
+
+Иными словами, она показывает, \textbf{какой дополнительный возврат мы получаем от выбранного действия по сравнению со средним возвратом из данного состояния}.
+
+Этот дополнительный возврат --- то, что превышает ожидаемую ценность состояния.
+
+\begin{itemize}
+\tightlist
+\item
+  Если \(A(s,a)>0\), градиент \textbf{направлен в сторону увеличения вероятности этого действия}.
+\item
+  Если \(A(s,a)<0\) (действие хуже среднего для данного состояния), \textbf{градиент направлен в противоположную сторону}.
+\end{itemize}
+
+Проблема прямого вычисления функции преимущества заключается в необходимости иметь две функции ценности --- \(Q(s,a)\) и \(V(s)\). К счастью, \textbf{TD-ошибка может служить хорошей оценкой функции преимущества}.
+
+\CourseFigure{advantage2.jpg}{TD-ошибка как оценка преимущества \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/advantage2.jpg}{[оригинал]}}
+
+\subsection{Практика A2C в робототехнической симуляции Panda-Gym}\label{advantage-actor-critic-a2c-using-robotics-simulations-with-panda-gym}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit6/unit6.ipynb}{Официальный практический ноутбук модуля 6 (Google Colab)}
+
+\href{http://hf.co/join/discord}{Помощь сообщества}
+
+Теперь, когда ты познакомился с теорией Advantage Actor-Critic (A2C), \textbf{ты готов обучить собственного A2C-агента} с помощью Stable-Baselines3 в робототехнической среде. Мы обучим:
+
+\begin{itemize}
+\tightlist
+\item
+  Роботизированную руку перемещаться в заданную точку.
+\end{itemize}
+
+Мы будем использовать:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/qgallouedec/panda-gym}{panda-gym}
+\end{itemize}
+
+Чтобы практическое задание было зачтено для сертификации, необходимо опубликовать обученные модели на Hub и получить следующие результаты:
+
+\begin{itemize}
+\tightlist
+\item
+  Для \texttt{PandaReachDense-v3} требуется результат \(\ge -3.5\).
+\end{itemize}
+
+Чтобы узнать результат, \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{открой таблицу лидеров} и найди свою модель. \textbf{Результат = mean\_reward - std вознаграждения}.
+
+Подробнее о сертификации смотри в разделе \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}.
+
+\textbf{Чтобы начать практику, нажми кнопку Open In Colab}:
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit6/unit6.ipynb}{Открыть в Google Colab}
+
+\subsection{Модуль 6: A2C в робототехнической симуляции Panda-Gym}\label{unit-6-advantage-actor-critic-a2c-using-robotics-simulations-with-panda-gym}
+
+\paragraph{Среды:}\label{environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/qgallouedec/panda-gym}{Panda-Gym}
+\end{itemize}
+
+\paragraph{Библиотека RL:}\label{rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://stable-baselines3.readthedocs.io/}{Stable-Baselines3}
+\end{itemize}
+
+Мы постоянно стараемся улучшать учебные материалы. Если \textbf{ты обнаружишь проблему в ноутбуке}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создай обращение в репозитории GitHub}.
+
+\subsubsection{Цели этого ноутбука}\label{objectives-of-this-notebook}
+
+После выполнения ноутбука ты сможешь:
+
+\begin{itemize}
+\tightlist
+\item
+  Использовать \textbf{библиотеку сред Panda-Gym}.
+\item
+  \textbf{Обучать роботов с помощью A2C}.
+\item
+  Объяснять, почему \textbf{нужна нормализация входных данных}.
+\item
+  \textbf{Публиковать обученного агента и код на Hub}, добавляя видео его работы и оценку качества.
+\end{itemize}
+
+\subsubsection{Предварительные требования}\label{prerequisites}
+
+Перед началом работы с ноутбуком необходимо:
+
+Изучить \href{https://huggingface.co/deep-rl-course/unit6/introduction}{методы Actor-Critic в теоретической части модуля 6}.
+
+\subsection{Обучим наших первых роботов}\label{lets-train-our-first-robots}
+
+\subsubsection{Настройка GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Чтобы \textbf{ускорить обучение агента, используем GPU}. В Colab для этого выбери \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Google Colab: выбор настроек среды выполнения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Затем выбери \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}.
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Google Colab: включение ускорения на GPU \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+\subsubsection{Создание виртуального дисплея}\label{create-a-virtual-display}
+
+В ходе работы с ноутбуком понадобится создавать видео с демонстрацией агента. Для этого в Colab \textbf{нужен виртуальный экран, чтобы отрисовывать среду} и записывать кадры.
+
+Следующая ячейка установит библиотеки, создаст виртуальный экран и запустит его.
+
+\begin{lstlisting}
+%%capture
+!apt install python-opengl
+!apt install ffmpeg
+!apt install xvfb
+!pip3 install pyvirtualdisplay
+\end{lstlisting}
+
+\begin{lstlisting}
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\paragraph{Установка зависимостей}\label{install-dependencies}
+
+Установим несколько библиотек:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{gymnasium}.
+\item
+  \texttt{panda-gym}: содержит робототехнические среды с манипуляторами.
+\item
+  \texttt{stable-baselines3}: библиотека алгоритмов глубокого обучения с подкреплением SB3.
+\item
+  \texttt{huggingface\_sb3}: дополнительный код для загрузки и публикации моделей Stable-Baselines3 на Hugging Face Hub.
+\item
+  \texttt{huggingface\_hub}: библиотека для работы с репозиториями Hugging Face Hub.
+\end{itemize}
+
+\begin{lstlisting}
+!pip install stable-baselines3[extra]
+!pip install gymnasium
+!pip install huggingface_sb3
+!pip install huggingface_hub
+!pip install panda_gym
+\end{lstlisting}
+
+\subsubsection{Импорт пакетов}\label{import-the-packages}
+
+\begin{lstlisting}
+import os
+
+import gymnasium as gym
+import panda_gym
+
+from huggingface_sb3 import load_from_hub, package_to_hub
+
+from stable_baselines3 import A2C
+from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.env_util import make_vec_env
+
+from huggingface_hub import notebook_login
+\end{lstlisting}
+
+\subsubsection{PandaReachDense-v3}\label{pandareachdense-v3}
+
+Агент, которого мы обучим, --- это роботизированная рука, которой нужно управлять: перемещать манипулятор и его конечный исполнительный орган.
+
+В робототехнике \emph{конечный исполнительный орган (end-effector)} --- устройство на конце манипулятора, предназначенное для взаимодействия с окружающей средой.
+
+В \texttt{PandaReach} робот должен поместить конечный исполнительный орган в целевую точку (зелёный шар).
+
+Мы используем версию среды с \emph{плотной функцией вознаграждения (dense reward)}: \textbf{вознаграждение выдаётся на каждом шаге} (чем ближе агент к выполнению задачи, тем оно больше). Напротив, при \emph{разреженном вознаграждении (sparse reward)} среда \textbf{выдаёт награду только после завершения задачи}.
+
+Также будем использовать \emph{управление смещением конечного исполнительного органа}: \textbf{действие задаёт его перемещение}, а не движение каждого отдельного сустава (joint control).
+
+\CourseFigure{robotics.jpg}{Робототехническая среда PandaReach \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/robotics.jpg}{[оригинал]}}
+
+Так \textbf{обучение будет проще}.
+
+\paragraph{Создание среды}\label{create-the-environment}
+
+\subparagraph{Среда}\label{the-environment}
+
+В \texttt{PandaReachDense-v3} робот должен переместить конечный исполнительный орган в целевую точку (зелёный шар).
+
+\begin{lstlisting}
+env_id = "PandaReachDense-v3"
+
+# Create the env
+env = gym.make(env_id)
+
+# Get the state space and action space
+s_size = env.observation_space.shape
+a_size = env.action_space
+\end{lstlisting}
+
+\begin{lstlisting}
+print("_____OBSERVATION SPACE_____ \n")
+print("The State Space is: ", s_size)
+print("Sample observation", env.observation_space.sample()) # Get a random observation
+\end{lstlisting}
+
+Пространство наблюдений \textbf{представляет собой словарь из трёх элементов}:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{achieved\_goal}: положение цели по координатам \((x,y,z)\).
+\item
+  \texttt{desired\_goal}: расстояние между целевым положением и текущим положением объекта по координатам \((x,y,z)\).
+\item
+  \texttt{observation}: положение \((x,y,z)\) и скорость конечного исполнительного органа \((v_x,v_y,v_z)\).
+\end{itemize}
+
+Поскольку наблюдение представлено словарём, \textbf{вместо \texttt{MlpPolicy} нам требуется политика \texttt{MultiInputPolicy}}.
+
+\begin{lstlisting}
+print("\n _____ACTION SPACE_____ \n")
+print("The Action Space is: ", a_size)
+print("Action Space Sample", env.action_space.sample()) # Take a random action
+\end{lstlisting}
+
+Пространство действий --- вектор из трёх значений:
+
+\begin{itemize}
+\tightlist
+\item
+  Управление перемещением по координатам \(x\), \(y\), \(z\).
+\end{itemize}
+
+\paragraph{Нормализация наблюдений и вознаграждений}\label{normalize-observation-and-rewards}
+
+В обучении с подкреплением хорошей практикой считается \href{https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html}{нормализация входных признаков}.
+
+Для этого существует обёртка, вычисляющая скользящие оценки среднего значения и стандартного отклонения входных признаков.
+
+Этой же обёрткой нормализуем и вознаграждения, добавив \texttt{norm\_reward\ =\ True}.
+
+\href{https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html\#vecnormalize}{Обратись к документации, чтобы заполнить эту ячейку}.
+
+\begin{lstlisting}
+env = make_vec_env(env_id, n_envs=4)
+
+# Adding this wrapper to normalize the observation and the reward
+env = # TODO: Add the wrapper
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution}
+
+\begin{lstlisting}
+env = make_vec_env(env_id, n_envs=4)
+
+env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+\end{lstlisting}
+
+\paragraph{Создание модели A2C}\label{create-the-a2c-model}
+
+Подробнее о реализации A2C в Stable-Baselines3 смотри: \url{https://stable-baselines3.readthedocs.io/en/master/modules/a2c.html#notes}.
+
+Для выбора подходящих параметров я обратился к \href{https://huggingface.co/sb3}{официальным обученным агентам команды Stable-Baselines3}.
+
+\begin{lstlisting}
+model = # Create the A2C model and try to find the best parameters
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution-1}
+
+\begin{lstlisting}
+model = A2C(policy = "MultiInputPolicy",
+            env = env,
+            verbose=1)
+\end{lstlisting}
+
+\paragraph{Обучение A2C-агента}\label{train-the-a2c-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  Обучим агента в течение 1\,000\,000 шагов. Не забудь включить GPU в Colab. Это займёт примерно 25--40 минут.
+\end{itemize}
+
+\begin{lstlisting}
+model.learn(1_000_000)
+\end{lstlisting}
+
+\begin{lstlisting}
+# Save the model and  VecNormalize statistics when saving the agent
+model.save("a2c-PandaReachDense-v3")
+env.save("vec_normalize.pkl")
+\end{lstlisting}
+
+\paragraph{Оценка агента}\label{evaluate-the-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  После обучения агента необходимо \textbf{проверить качество его работы}.
+\item
+  Для этого Stable-Baselines3 предоставляет функцию \texttt{evaluate\_policy}.
+\end{itemize}
+
+\begin{lstlisting}
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+# Load the saved statistics
+eval_env = DummyVecEnv([lambda: gym.make("PandaReachDense-v3")])
+eval_env = VecNormalize.load("vec_normalize.pkl", eval_env)
+
+# We need to override the render_mode
+eval_env.render_mode = "rgb_array"
+
+#  do not update them at test time
+eval_env.training = False
+# reward normalization is not needed at test time
+eval_env.norm_reward = False
+
+# Load the agent
+model = A2C.load("a2c-PandaReachDense-v3")
+
+mean_reward, std_reward = evaluate_policy(model, eval_env)
+
+print(f"Mean reward = {mean_reward:.2f} +/- {std_reward:.2f}")
+\end{lstlisting}
+
+\paragraph{Публикация обученной модели на Hub}\label{publish-your-trained-model-on-the-hub}
+
+Убедившись в хороших результатах обучения, мы можем опубликовать обученную модель на Hub одной строкой кода.
+
+Документация библиотеки: \url{https://github.com/huggingface/huggingface_sb3/tree/main#hugging-face--x-stable-baselines3-v20}.
+
+С помощью \texttt{package\_to\_hub}, как мы уже обсуждали в предыдущих модулях, \textbf{можно оценить агента, записать видео его работы, создать карточку модели и опубликовать всё на Hub}.
+
+Это позволяет:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Показать результаты своей работы}.
+\item
+  \textbf{Посмотреть, как агент играет}.
+\item
+  \textbf{Поделиться агентом с сообществом}, чтобы другие пользователи могли его применять.
+\item
+  \textbf{Сравнить качество агента с результатами других учащихся в таблице лидеров}: \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}.
+\end{itemize}
+
+Чтобы поделиться моделью с сообществом, нужно выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если у тебя ещё нет аккаунта, зарегистрируйся на Hugging Face: \url{https://huggingface.co/join}.
+\item
+  Войди в аккаунт и сохрани токен аутентификации с сайта Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Создай новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правом записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена Hugging Face с правом записи \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Скопируй токен.
+\item
+  Запусти ячейку ниже и вставь токен.
+\end{itemize}
+
+\begin{lstlisting}
+notebook_login()
+!git config --global credential.helper store
+\end{lstlisting}
+
+Если не используешь Google Colab или Jupyter Notebook, вместо этого выполни команду \texttt{huggingface-cli\ login}.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Теперь мы готовы опубликовать обученного агента на Hub с помощью \texttt{package\_to\_hub()}. Для этой среды \textbf{выполнение ячейки может занимать примерно 10 минут}.
+\end{enumerate}
+
+\begin{lstlisting}
+from huggingface_sb3 import package_to_hub
+
+package_to_hub(
+    model=model,
+    model_name=f"a2c-{env_id}",
+    model_architecture="A2C",
+    env_id=env_id,
+    eval_env=eval_env,
+    repo_id=f"ThomasSimonini/a2c-{env_id}", # Change the username
+    commit_message="Initial commit",
+)
+\end{lstlisting}
+
+\subsubsection{Дополнительные задания}\label{some-additional-challenges}
+
+Лучший способ учиться --- \textbf{пробовать самостоятельно}! Например, можно попробовать среду \texttt{PandaPickAndPlace-v3}.
+
+Если захочешь решать более сложные задачи в panda-gym, изучи примеры с \textbf{TQC или SAC} --- алгоритмами с более эффективным использованием выборок, подходящими для робототехники. На реальном роботе это особенно важно: в отличие от симуляции, \textbf{слишком активные движения манипулятора могут привести к его поломке}.
+
+PandaPickAndPlace-v1 (для этой модели используется версия среды v1): \url{https://huggingface.co/sb3/tqc-PandaPickAndPlace-v1}.
+
+Также не забудь изучить документацию panda-gym: \url{https://panda-gym.readthedocs.io/en/latest/usage/train_with_sb3.html}.
+
+Ниже перечислены шаги для обучения ещё одного агента (необязательное задание):
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Создай среду с именем «PandaPickAndPlace-v3».
+\item
+  Создай векторизованную среду.
+\item
+  Добавь обёртку для нормализации наблюдений и вознаграждений. \href{https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html\#vecnormalize}{Смотри документацию}.
+\item
+  Создай модель A2C (не забудь \texttt{verbose=1}, чтобы выводить журнал обучения).
+\item
+  Обучи её на 1 млн шагов.
+\item
+  Сохрани модель и статистики VecNormalize при сохранении агента.
+\item
+  Оцени работу агента.
+\item
+  Опубликуй обученную модель на Hub с помощью \texttt{package\_to\_hub}.
+\end{enumerate}
+
+\paragraph{Решение (необязательно)}\label{solution-optional}
+
+\begin{lstlisting}
+# 1 - 2
+env_id = "PandaPickAndPlace-v3"
+env = make_vec_env(env_id, n_envs=4)
+
+# 3
+env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+
+# 4
+model = A2C(policy = "MultiInputPolicy",
+            env = env,
+            verbose=1)
+# 5
+model.learn(1_000_000)
+\end{lstlisting}
+
+\begin{lstlisting}
+# 6
+model_name = "a2c-PandaPickAndPlace-v3";
+model.save(model_name)
+env.save("vec_normalize.pkl")
+
+# 7
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+# Load the saved statistics
+eval_env = DummyVecEnv([lambda: gym.make("PandaPickAndPlace-v3")])
+eval_env = VecNormalize.load("vec_normalize.pkl", eval_env)
+
+#  do not update them at test time
+eval_env.training = False
+# reward normalization is not needed at test time
+eval_env.norm_reward = False
+
+# Load the agent
+model = A2C.load(model_name)
+
+mean_reward, std_reward = evaluate_policy(model, eval_env)
+
+print(f"Mean reward = {mean_reward:.2f} +/- {std_reward:.2f}")
+
+# 8
+package_to_hub(
+    model=model,
+    model_name=f"a2c-{env_id}",
+    model_architecture="A2C",
+    env_id=env_id,
+    eval_env=eval_env,
+    repo_id=f"ThomasSimonini/a2c-{env_id}", # TODO: Change the username
+    commit_message="Initial commit",
+)
+\end{lstlisting}
+
+До встречи в модуле 7!
+
+\subsubsection{Продолжай учиться и развиваться}\label{keep-learning-stay-awesome}
+
+\section{Тест}\label{quiz}
+
+Лучший способ усвоить материал и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{избежать иллюзии компетентности} --- \textbf{проверить себя}. Так ты поймёшь, \textbf{какие темы нужно повторить}.
+
+\subsubsection{Q1: Какая интерпретация компромисса между смещением и дисперсией наиболее точна для обучения с подкреплением?}\label{q1-which-of-the-following-interpretations-of-bias-variance-tradeoff-is-the-most-accurate-in-the-field-of-reinforcement-learning}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Компромисс между смещением и дисперсией отражает способность модели обобщать знания на ранее размеченные данные, которые мы используем при обучении.
+\item
+  \textbf{B.} Компромисс между смещением и дисперсией отражает, насколько точно сигнал подкрепления соответствует истинному вознаграждению, которое агент должен получать от среды.
+\end{itemize}
+
+\subsubsection{Q2: Какие утверждения о смещении и дисперсии моделей в RL верны?}\label{q2-which-of-the-following-statements-are-true-when-talking-about-models-with-bias-andor-variance-in-rl}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Несмещённый сигнал вознаграждения возвращает значения, близкие к реальным или ожидаемым вознаграждениям среды.
+\item
+  \textbf{B.} Смещённый сигнал вознаграждения возвращает значения, близкие к реальным или ожидаемым вознаграждениям среды.
+\item
+  \textbf{C.} Сигнал вознаграждения с высокой дисперсией содержит сильный шум и зависит, например, от случайных (непостоянных) факторов среды.
+\item
+  \textbf{D.} Сигнал вознаграждения с низкой дисперсией содержит сильный шум и зависит, например, от случайных (непостоянных) факторов среды.
+\end{itemize}
+
+\subsubsection{Q3: Какие утверждения о методе Монте-Карло верны?}\label{q3-which-of-the-following-statements-are-true-about-monte-carlo-method}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Это метод выборочного оценивания: мы рассматриваем не все возможные состояния, а некоторую их выборку.
+\item
+  \textbf{B.} Он очень устойчив к стохастичности (случайным событиям внутри траектории).
+\item
+  \textbf{C.} Чтобы уменьшить влияние случайности в методе Монте-Карло, мы берём \texttt{n} траекторий и усредняем их, уменьшая вклад каждой отдельной траектории.
+\end{itemize}
+
+\subsubsection{Q4: Как бы ты своими словами описал метод Actor-Critic (A2C)?}\label{q4-how-would-you-describe-with-your-own-words-the-actor-critic-method-a2c}
+
+\subsubsection{Q5: Какие утверждения о методе Actor-Critic верны?}\label{q5-which-of-the-following-statements-are-true-about-the-actor-critic-method}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Критик не обучает никакую функцию в ходе тренировки.
+\item
+  \textbf{B.} Актор обучает функцию политики, а Критик --- функцию ценности.
+\item
+  \textbf{C.} Метод повышает устойчивость к стохастичности и уменьшает высокую дисперсию.
+\end{itemize}
+
+\subsubsection{Q6: Что такое \texttt{Advantage} в A2C?}\label{q6-what-is-advantage-in-the-a2c-method}
+
+Поздравляем с прохождением теста! Если какие-то моменты остались непонятными, удели время повторному чтению главы и закреплению знаний.
+
+\subsection{Решения и пояснения к тесту}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Решение Q1}\label{q1-solution}
+
+\textbf{Правильный ответ:} B.
+
+\textbf{A.} Компромисс между смещением и дисперсией отражает способность модели обобщать знания на ранее размеченные данные, которые мы используем при обучении. Объяснение: это классический компромисс между смещением и дисперсией в машинном обучении. В нашем случае обучения с подкреплением у нас нет заранее размеченных данных --- есть только сигнал вознаграждения.
+
+\textbf{B.} Компромисс между смещением и дисперсией отражает, насколько точно сигнал подкрепления соответствует истинному вознаграждению, которое агент должен получать от среды.
+
+\subsubsection{Решение Q2}\label{q2-solution}
+
+\textbf{Правильные ответы:} A, C.
+
+\textbf{A.} Несмещённый сигнал вознаграждения возвращает значения, близкие к реальным или ожидаемым вознаграждениям среды.
+
+\textbf{B.} Смещённый сигнал вознаграждения возвращает значения, близкие к реальным или ожидаемым вознаграждениям среды. Объяснение: если сигнал вознаграждения смещён, получаемое значение отличается от истинного вознаграждения, которое должна выдавать среда.
+
+\textbf{C.} Сигнал вознаграждения с высокой дисперсией содержит сильный шум и зависит, например, от случайных (непостоянных) факторов среды.
+
+\textbf{D.} Сигнал вознаграждения с низкой дисперсией содержит сильный шум и зависит, например, от случайных (непостоянных) факторов среды. Объяснение: при низкой дисперсии сигнал меньше зависит от шума и даёт близкие значения независимо от случайных факторов среды.
+
+\subsubsection{Решение Q3}\label{q3-solution}
+
+\textbf{Правильные ответы:} A, C.
+
+\textbf{A.} Это метод выборочного оценивания: мы рассматриваем не все возможные состояния, а некоторую их выборку.
+
+\textbf{B.} Он очень устойчив к стохастичности (случайным событиям внутри траектории). Объяснение: метод Монте-Карло каждый раз случайным образом оценивает выборку траекторий. Однако даже одинаковые траектории могут иметь разный возврат, если содержат случайные события.
+
+\textbf{C.} Чтобы уменьшить влияние случайности в методе Монте-Карло, мы берём \texttt{n} траекторий и усредняем их, уменьшая вклад каждой отдельной траектории.
+
+\subsubsection{Решение Q4}\label{q4-solution}
+
+Идея Actor-Critic состоит в том, что мы обучаем два приближения функций:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \texttt{policy} --- политику, которая определяет действия агента (\(\pi\));
+\item
+  \texttt{value} --- функцию ценности, помогающую обновлять политику и оценивающую качество выбранного действия (\(q\)).
+\end{enumerate}
+
+\CourseFigure{step2.jpg}{Процесс Actor-Critic: Критик оценивает пару «состояние--действие» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/step2.jpg}{[оригинал]}}
+
+\subsubsection{Решение Q5}\label{q5-solution}
+
+\textbf{Правильные ответы:} B, C.
+
+\textbf{A.} Критик не обучает никакую функцию в ходе тренировки. Объяснение: параметры функций и Актора, и Критика обновляются во время обучения.
+
+\textbf{B.} Актор обучает функцию политики, а Критик --- функцию ценности.
+
+\textbf{C.} Метод повышает устойчивость к стохастичности и уменьшает высокую дисперсию.
+
+\subsubsection{Решение Q6}\label{q6-solution}
+
+Вместо прямого использования функции ценности действия Критика можно применять функцию \texttt{Advantage} (преимущества). Она оценивает относительное преимущество выбранного действия по сравнению с другими действиями, доступными в данном состоянии, с учётом их среднего результата.
+
+Иными словами, насколько это действие в данном состоянии лучше средней ценности состояния.
+
+\CourseFigure{advantage1.jpg}{Определение функции преимущества \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit8/advantage1.jpg}{[оригинал]}}
+
+\section{Заключение}\label{conclusion}
+
+Поздравляем с завершением модуля и практического занятия! Ты только что обучил своих первых виртуальных роботов.
+
+\textbf{Перед продолжением убедись, что усвоил материал}. Также можешь изучить материалы из раздела \emph{«Дополнительная литература»}.
+
+Нам будет очень интересно \textbf{узнать твоё мнение о курсе и о том, как его улучшить}. Если есть обратная связь, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполни эту форму}.
+
+До встречи в следующем модуле!
+
+\subsubsection{Продолжай учиться и развиваться}\label{keep-learning-stay-awesome-1}
+
+\section{Дополнительная литература}\label{additional-readings}
+
+\subsection{Компромисс между смещением и дисперсией в RL}\label{bias-variance-tradeoff-in-reinforcement-learning}
+
+Если хочешь глубже разобраться в компромиссе между смещением и дисперсией в глубоком обучении с подкреплением, посмотри следующие статьи:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://blog.mlreview.com/making-sense-of-the-bias-variance-trade-off-in-deep-reinforcement-learning-79cf1e83d565}{Как понимать компромисс между смещением и дисперсией в глубоком RL}
+\item
+  \href{https://www.endtoend.ai/blog/bias-variance-tradeoff-in-reinforcement-learning/}{Компромисс между смещением и дисперсией в обучении с подкреплением}
+\end{itemize}
+
+\subsection{Функции преимущества}\label{advantage-functions}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://spinningup.openai.com/en/latest/spinningup/rl_intro.html?highlight=advantage\%20functio\#advantage-functions}{Функции преимущества: Spinning Up RL}
+\end{itemize}
+
+\subsection{Actor-Critic}\label{actor-critic}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://www.youtube.com/watch?v=AKbX1Zvo7r8}{Основы глубокого RL: градиенты политики и оценка преимущества, лекция Питера Аббила}
+\item
+  \href{https://arxiv.org/abs/1602.01783v2}{Статья по A2C: «Асинхронные методы глубокого обучения с подкреплением»}
+\end{itemize}
+
+\end{document}

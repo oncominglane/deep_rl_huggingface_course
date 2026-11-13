@@ -1,0 +1,928 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course -- Bonus Unit 3.
+% Complete original MDX material; compiled with the existing shared preamble.
+% Compile from notes/en/ with latexmk -pdf unitbonus3en.tex
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\graphicspath{{../assets/unitbonus3/}}
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}HF Deep RL Course \enspace/\enspace Bonus Unit 3}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Extra Topics}
+\title{\textbf{Deep Reinforcement Learning}\\[0.35em]\large Bonus Unit 3: Further Topics and Research Directions}
+\author{Hugging Face Deep RL Course\\\small Complete MDX-to-\LaTeX{} study edition}
+\date{}
+\begin{document}
+\maketitle
+\vspace{-0.65em}
+\begin{center}\small\color{secondary}Source: Hugging Face Deep RL Course (original English text).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.4em}
+\section{Introduction}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Hugging Face Deep RL Course: Bonus Unit 3 overview \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/thumbnail.png}{[original image]}}
+
+Congratulations on finishing this course! \textbf{You now have a solid background in Deep Reinforcement Learning}. But this course was just the beginning of your Deep Reinforcement Learning journey, there are so many subsections to discover. In this optional unit, we \textbf{give you resources to explore multiple concepts and research topics in Reinforcement Learning}.
+
+Contrary to other units, this unit is a collective work of multiple people from Hugging Face. We mention the author for each unit.
+
+Sound fun? Let's get started ,
+
+\section{(Automatic) Curriculum Learning for RL}\label{automatic-curriculum-learning-for-rl}
+
+While most of the RL methods seen in this course work well in practice, there are some cases where using them alone fails. This can happen, for instance, when:
+
+\begin{itemize}
+\item
+  the task to learn is hard and requires an \textbf{incremental acquisition of skills} (for instance when one wants to make a bipedal agent learn to go through hard obstacles, it must first learn to stand, then walk, then maybe jump\ldots)
+\item
+  there are variations in the environment (that affect the difficulty) and one wants its agent to be \textbf{robust} to them
+\end{itemize}
+
+\CourseFigure{bipedal_frame.png}{Bipedal locomotion in TeachMyAgent: curriculum-learning example \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/bipedal.gif}{[original image]}}
+
+\CourseFigure{movable_creepers_frame.png}{Moving obstacles in the TeachMyAgent benchmark -- \protect\href{https://developmentalsystems.org/TeachMyAgent/}{TeachMyAgent} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/movable_creepers.gif}{[original image]}}
+
+In such cases, it seems needed to propose different tasks to our RL agent and organize them such that the agent progressively acquires skills. This approach is called \textbf{Curriculum Learning} and usually implies a hand-designed curriculum (or set of tasks organized in a specific order). In practice, one can, for instance, control the generation of the environment, the initial states, or use Self-Play and control the level of opponents proposed to the RL agent.
+
+As designing such a curriculum is not always trivial, the field of \textbf{Automatic Curriculum Learning (ACL) proposes to design approaches that learn to create such an organization of tasks in order to maximize the RL agent's performances}. Portelas et al.~proposed to define ACL as:
+
+\begin{quote}
+\ldots{} a family of mechanisms that automatically adapt the distribution of training data by learning to adjust the selection of learning situations to the capabilities of RL agents.
+\end{quote}
+
+As an example, OpenAI used \textbf{Domain Randomization} (they applied random variations on the environment) to make a robot hand solve Rubik's Cubes.
+
+\CourseFigure{dr.jpg}{Domain randomization for the robotic Rubik's Cube task -- \protect\href{https://openai.com/blog/solving-rubiks-cube/}{OpenAI - Solving Rubik's Cube with a Robot Hand} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/dr.jpg}{[original image]}}
+
+Finally, you can play with the robustness of agents trained in the \href{https://huggingface.co/spaces/flowers-team/Interactive_DeepRL_Demo}{TeachMyAgent} benchmark by controlling environment variations or even drawing the terrain
+
+\CourseFigure{demo.png}{Interactive TeachMyAgent environment and terrain variations -- \protect\href{https://huggingface.co/spaces/flowers-team/Interactive_DeepRL_Demo}{https://huggingface.co/spaces/flowers-team/Interactive\_DeepRL\_Demo} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/demo.png}{[original image]}}
+
+\subsection{Further reading}\label{further-reading}
+
+For more information, we recommend that you check out the following resources:
+
+\subsubsection{Overview of the field}\label{overview-of-the-field}
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/pdf/2003.04664.pdf}{Automatic Curriculum Learning For Deep RL: A Short Survey}
+\item
+  \href{https://lilianweng.github.io/posts/2020-01-29-curriculum-rl/}{Curriculum for Reinforcement Learning}
+\end{itemize}
+
+\subsubsection{Recent methods}\label{recent-methods}
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/abs/2203.01302}{Evolving Curricula with Regret-Based Environment Design}
+\item
+  \href{https://proceedings.mlr.press/v162/klink22a.html}{Curriculum Reinforcement Learning via Constrained Optimal Transport}
+\item
+  \href{https://arxiv.org/abs/2010.03934}{Prioritized Level Replay}
+\end{itemize}
+
+\subsection{Author}\label{author}
+
+This section was written by \href{https://twitter.com/ClementRomac}{Clément Romac}
+
+\section{Generalization in Reinforcement Learning}\label{generalization-in-reinforcement-learning}
+
+Generalization plays a pivotal role in the realm of Reinforcement Learning. While \textbf{RL algorithms demonstrate good performance in controlled environments}, the real world presents a \textbf{unique challenge due to its non-stationary and open-ended nature}.
+
+As a result, the development of RL algorithms that stay robust in the face of environmental variations, coupled with the capability to transfer and adapt to uncharted yet analogous tasks and settings, becomes fundamental for real world application of RL.
+
+If you're interested to dive deeper into this research subject, we recommend exploring the following resource:
+
+\begin{itemize}
+\item
+  \href{https://robertkirk.github.io/2022/01/17/generalisation-in-reinforcement-learning-survey.html}{Generalization in Reinforcement Learning by Robert Kirk}: this comprehensive survey provides an insightful \textbf{overview of the concept of generalization in RL}, making it an excellent starting point for your exploration.
+\item
+  \href{https://blog.research.google/2021/09/improving-generalization-in.html?m=1}{Improving Generalization in Reinforcement Learning using Policy Similarity Embeddings}
+\end{itemize}
+
+\section{Model Based Reinforcement Learning (MBRL)}\label{model-based-reinforcement-learning-mbrl}
+
+Model-based reinforcement learning only differs from its model-free counterpart in learning a \emph{dynamics model}, but that has substantial downstream effects on how the decisions are made.
+
+The dynamics model usually models the environment transition dynamics, \(s_{t+1} = f_\theta (s_t, a_t)\), but things like inverse dynamics models (mapping from states to actions) or reward models (predicting rewards) can be used in this framework.
+
+\subsection{Simple definition}\label{simple-definition}
+
+\begin{itemize}
+\item
+  There is an agent that repeatedly tries to solve a problem, \textbf{accumulating state and action data}.
+\item
+  With that data, the agent creates a structured learning tool, \emph{a dynamics model}, to reason about the world.
+\item
+  With the dynamics model, the agent \textbf{decides how to act by predicting the future}.
+\item
+  With those actions, \textbf{the agent collects more data, improves said model, and hopefully improves future actions}.
+\end{itemize}
+
+\subsection{Academic definition}\label{academic-definition}
+
+Model-based reinforcement learning (MBRL) follows the framework of an agent interacting in an environment, \textbf{learning a model of said environment}, and then \textbf{leveraging the model for control (making decisions)}.
+
+Specifically, the agent acts in a Markov Decision Process (MDP) governed by a transition function \(s_{t+1} = f (s_t , a_t)\) and returns a reward at each step \(r(s_t, a_t)\). With a collected dataset \(D :={ s_i, a_i, s_{i+1}, r_i}\), the agent learns a model, \(s_{t+1} = f_\theta (s_t , a_t)\) \textbf{to minimize the negative log-likelihood of the transitions}.
+
+We employ sample-based model-predictive control (MPC) using the learned dynamics model, which optimizes the expected reward over a finite, recursively predicted horizon, \(\tau\), from a set of actions sampled from a uniform distribution \(U(a)\), (see \href{https://arxiv.org/pdf/2002.04523}{paper} or \href{https://arxiv.org/pdf/2012.09156.pdf}{paper} or \href{https://arxiv.org/pdf/2009.01221.pdf}{paper}).
+
+\subsection{Further reading}\label{further-reading-1}
+
+For more information on MBRL, we recommend you check out the following resources:
+
+\begin{itemize}
+\item
+  A \href{https://www.natolambert.com/writing/debugging-mbrl}{blog post on debugging MBRL}.
+\item
+  A \href{https://arxiv.org/abs/2006.16712}{recent review paper on MBRL},
+\end{itemize}
+
+\subsection{Author}\label{author-1}
+
+This section was written by \href{https://twitter.com/natolambert}{Nathan Lambert}
+
+\section{Offline vs.~Online Reinforcement Learning}\label{offline-vs.-online-reinforcement-learning}
+
+Deep Reinforcement Learning (RL) is a framework \textbf{to build decision-making agents}. These agents aim to learn optimal behavior (policy) by interacting with the environment through \textbf{trial and error and receiving rewards as unique feedback}.
+
+The agent's goal \textbf{is to maximize its cumulative reward}, called return. Because RL is based on the \emph{reward hypothesis}: all goals can be described as the \textbf{maximization of the expected cumulative reward}.
+
+Deep Reinforcement Learning agents \textbf{learn with batches of experience}. The question is, how do they collect it?:
+
+\CourseFigure{offlinevsonlinerl_frame.png}{Comparison of offline and online reinforcement learning -- A comparison between Reinforcement Learning in an Online and Offline setting, figure taken from: \protect\href{https://offline-rl.github.io/}{this post} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/offlinevsonlinerl.gif}{[original image]}}
+
+\begin{itemize}
+\tightlist
+\item
+  In \emph{online reinforcement learning}, which is what we've learned during this course, the agent \textbf{gathers data directly}: it collects a batch of experience by \textbf{interacting with the environment}. Then, it uses this experience immediately (or via some replay buffer) to learn from it (update its policy).
+\end{itemize}
+
+But this implies that either you \textbf{train your agent directly in the real world or have a simulator}. If you don't have one, you need to build it, which can be very complex (how to reflect the complex reality of the real world in an environment?), expensive, and insecure (if the simulator has flaws that may provide a competitive advantage, the agent will exploit them).
+
+\begin{itemize}
+\tightlist
+\item
+  On the other hand, in \emph{offline reinforcement learning}, the agent only \textbf{uses data collected from other agents or human demonstrations}. It does \textbf{not interact with the environment}.
+\end{itemize}
+
+The process is as follows:
+
+\begin{itemize}
+\item
+  \textbf{Create a dataset} using one or more policies and/or human interactions.
+\item
+  Run \textbf{offline RL on this dataset} to learn a policy
+\end{itemize}
+
+This method has one drawback: the \emph{counterfactual queries problem}. What do we do if our agent \textbf{decides to do something for which we don't have the data?} For instance, turning right on an intersection but we don't have this trajectory.
+
+There exist some solutions on this topic, but if you want to know more about offline reinforcement learning, you can \href{https://www.youtube.com/watch?v=k08N5a0gG0A}{watch this video}
+
+\subsection{Further reading}\label{further-reading-2}
+
+For more information, we recommend you check out the following resources:
+
+\begin{itemize}
+\item
+  \href{https://www.youtube.com/watch?v=qgZPZREor5I}{Offline Reinforcement Learning, Talk by Sergei Levine}
+\item
+  \href{https://arxiv.org/abs/2005.01643}{Offline Reinforcement Learning: Tutorial, Review, and Perspectives on Open Problems}
+\end{itemize}
+
+\subsection{Author}\label{author-2}
+
+This section was written by \href{https://twitter.com/ThomasSimonini}{Thomas Simonini}
+
+\section{Decision Transformers}\label{decision-transformers}
+
+The Decision Transformer model was introduced by \href{https://arxiv.org/abs/2106.01345}{``Decision Transformer: Reinforcement Learning via Sequence Modeling'' by Chen L. et al}. It abstracts Reinforcement Learning as a conditional-sequence modeling problem.
+
+The main idea is that instead of training a policy using RL methods, such as fitting a value function, that will tell us what action to take to maximize the return (cumulative reward), \textbf{we use a sequence modeling algorithm (Transformer) that, given a desired return, past states, and actions, will generate future actions to achieve this desired return}. It's an autoregressive model conditioned on the desired return, past states, and actions to generate future actions that achieve the desired return.
+
+This is a complete shift in the Reinforcement Learning paradigm since we use generative trajectory modeling (modeling the joint distribution of the sequence of states, actions, and rewards) to replace conventional RL algorithms. This means that in Decision Transformers, we don't maximize the return but rather generate a series of future actions that achieve the desired return.
+
+The Hugging Face Transformers team integrated the Decision Transformer, an Offline Reinforcement Learning method, into the library as well as the Hugging Face Hub.
+
+\subsection{Learn about Decision Transformers}\label{learn-about-decision-transformers}
+
+To learn more about Decision Transformers, you should read the blogpost we wrote about it \href{https://huggingface.co/blog/decision-transformers}{Introducing Decision Transformers on Hugging Face}
+
+\subsection{Train your first Decision Transformers}\label{train-your-first-decision-transformers}
+
+Now that you understand how Decision Transformers work thanks to \href{https://huggingface.co/blog/decision-transformers}{Introducing Decision Transformers on Hugging Face}, you're ready to learn to train your first Offline Decision Transformer model from scratch to make a half-cheetah run.
+
+Start the tutorial here \url{https://huggingface.co/blog/train-decision-transformers}
+
+\subsection{Further reading}\label{further-reading-3}
+
+For more information, we recommend that you check out the following resources:
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/abs/2106.01345}{Decision Transformer: Reinforcement Learning via Sequence Modeling}
+\item
+  \href{https://arxiv.org/abs/2202.05607}{Online Decision Transformer}
+\end{itemize}
+
+\subsection{Author}\label{author-3}
+
+This section was written by \href{https://twitter.com/edwardbeeching}{Edward Beeching}
+
+\section{RLHF}\label{rlhf}
+
+Reinforcement learning from human feedback (RLHF) is a \textbf{methodology for integrating human data labels into a RL-based optimization process}. It is motivated by the \textbf{challenge of modeling human preferences}.
+
+For many questions, even if you could try and write down an equation for one ideal, humans differ on their preferences.
+
+Updating models \textbf{based on measured data is an avenue to try and alleviate these inherently human ML problems}.
+
+\subsection{Start Learning about RLHF}\label{start-learning-about-rlhf}
+
+To start learning about RLHF:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Read this introduction: \href{https://huggingface.co/blog/rlhf}{Illustrating Reinforcement Learning from Human Feedback (RLHF)}.
+\item
+  Watch the recorded live we did some weeks ago, where Nathan covered the basics of Reinforcement Learning from Human Feedback (RLHF) and how this technology is being used to enable state-of-the-art ML tools like ChatGPT. Most of the talk is an overview of the interconnected ML models. It covers the basics of Natural Language Processing and RL and how RLHF is used on large language models. We then conclude with open questions in RLHF.
+\end{enumerate}
+
+\textbf{Video lecture:} \href{https://www.youtube.com/watch?v=2MBJOuVq380}{Watch on YouTube}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Read other blogs on this topic, such as \href{https://robotic.substack.com/p/rlhf-chatgpt-data-moats}{Closed-API vs Open-source continues: RLHF, ChatGPT, data moats}. Let us know if there are more you like!
+\end{enumerate}
+
+\subsection{Additional readings}\label{additional-readings}
+
+\emph{Note, this is copied from the Illustrating RLHF blog post above}. Here is a list of the most prevalent papers on RLHF to date. The field was recently popularized with the emergence of DeepRL (around 2017) and has grown into a broader study of the applications of LLMs from many large technology companies. Here are some papers on RLHF that pre-date the LM focus:
+
+\begin{itemize}
+\item
+  \href{https://www.cs.utexas.edu/~pstone/Papers/bib2html-links/ICDL08-knox.pdf}{TAMER: Training an Agent Manually via Evaluative Reinforcement} (Knox and Stone 2008): Proposed a learned agent where humans provided scores on the actions taken iteratively to learn a reward model.
+\item
+  \href{http://proceedings.mlr.press/v70/macglashan17a/macglashan17a.pdf}{Interactive Learning from Policy-Dependent Human Feedback} (MacGlashan et al.~2017): Proposed an actor-critic algorithm, COACH, where human feedback (both positive and negative) is used to tune the advantage function.
+\item
+  \href{https://proceedings.neurips.cc/paper/2017/hash/d5e2c0adad503c91f91df240d0cd4e49-Abstract.html}{Deep Reinforcement Learning from Human Preferences} (Christiano et al.~2017): RLHF applied on preferences between Atari trajectories.
+\item
+  \href{https://ojs.aaai.org/index.php/AAAI/article/view/11485}{Deep TAMER: Interactive Agent Shaping in High-Dimensional State Spaces} (Warnell et al.~2018): Extends the TAMER framework where a deep neural network is used to model the reward prediction.
+\end{itemize}
+
+And here is a snapshot of the growing set of papers that show RLHF's performance for LMs:
+
+\begin{itemize}
+\item
+  \href{https://arxiv.org/abs/1909.08593}{Fine-Tuning Language Models from Human Preferences} (Zieglar et al.~2019): An early paper that studies the impact of reward learning on four specific tasks.
+\item
+  \href{https://proceedings.neurips.cc/paper/2020/hash/1f89885d556929e98d3ef9b86448f951-Abstract.html}{Learning to summarize with human feedback} (Stiennon et al., 2020): RLHF applied to the task of summarizing text. Also, \href{https://arxiv.org/abs/2109.10862}{Recursively Summarizing Books with Human Feedback} (OpenAI Alignment Team 2021), follow on work summarizing books.
+\item
+  \href{https://arxiv.org/abs/2112.09332}{WebGPT: Browser-assisted question-answering with human feedback} (OpenAI, 2021): Using RLHF to train an agent to navigate the web.
+\item
+  InstructGPT: \href{https://arxiv.org/abs/2203.02155}{Training language models to follow instructions with human feedback} (OpenAI Alignment Team 2022): RLHF applied to a general language model {[}\href{https://openai.com/blog/instruction-following/}{Blog post} on InstructGPT{]}.
+\item
+  GopherCite: \href{https://www.deepmind.com/publications/gophercite-teaching-language-models-to-support-answers-with-verified-quotes}{Teaching language models to support answers with verified quotes} (Menick et al.~2022): Train a LM with RLHF to return answers with specific citations.
+\item
+  Sparrow: \href{https://arxiv.org/abs/2209.14375}{Improving alignment of dialogue agents via targeted human judgements} (Glaese et al.~2022): Fine-tuning a dialogue agent with RLHF
+\item
+  \href{https://openai.com/blog/chatgpt/}{ChatGPT: Optimizing Language Models for Dialogue} (OpenAI 2022): Training a LM with RLHF for suitable use as an all-purpose chat bot.
+\item
+  \href{https://arxiv.org/abs/2210.10760}{Scaling Laws for Reward Model Overoptimization} (Gao et al.~2022): studies the scaling properties of the learned preference model in RLHF.
+\item
+  \href{https://arxiv.org/abs/2204.05862}{Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback} (Anthropic, 2022): A detailed documentation of training a LM assistant with RLHF.
+\item
+  \href{https://arxiv.org/abs/2209.07858}{Red Teaming Language Models to Reduce Harms: Methods, Scaling Behaviors, and Lessons Learned} (Ganguli et al.~2022): A detailed documentation of efforts to ``discover, measure, and attempt to reduce {[}language models{]} potentially harmful outputs.''
+\item
+  \href{https://arxiv.org/abs/2208.02294}{Dynamic Planning in Open-Ended Dialogue using Reinforcement Learning} (Cohen at al.~2022): Using RL to enhance the conversational skill of an open-ended dialogue agent.
+\item
+  \href{https://arxiv.org/abs/2210.01241}{Is Reinforcement Learning (Not) for Natural Language Processing?: Benchmarks, Baselines, and Building Blocks for Natural Language Policy Optimization} (Ramamurthy and Ammanabrolu et al.~2022): Discusses the design space of open-source tools in RLHF and proposes a new algorithm NLPO (Natural Language Policy Optimization) as an alternative to PPO.
+\end{itemize}
+
+\subsection{Author}\label{author-4}
+
+This section was written by \href{https://twitter.com/natolambert}{Nathan Lambert}
+
+\section{Language models in RL}\label{language-models-in-rl}
+
+\subsection{LMs encode useful knowledge for agents}\label{lms-encode-useful-knowledge-for-agents}
+
+\textbf{Language models} (LMs) can exhibit impressive abilities when manipulating text such as question-answering or even step-by-step reasoning. Additionally, their training on massive text corpora allowed them to \textbf{encode various types of knowledge including abstract ones about the physical rules of our world} (for instance what is possible to do with an object, what happens when one rotates an object\ldots).
+
+A natural question recently studied was whether such knowledge could benefit agents such as robots when trying to solve everyday tasks. And while these works showed interesting results, the proposed agents lacked any learning method. \textbf{This limitation prevents these agent from adapting to the environment (e.g.~fixing wrong knowledge) or learning new skills.}
+
+\CourseFigure{language.png}{Grounding language-model knowledge in robotic affordances -- Source: \protect\href{https://ai.googleblog.com/2022/08/towards-helpful-robots-grounding.html}{Towards Helpful Robots: Grounding Language in Robotic Affordances} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/language.png}{[original image]}}
+
+\subsection{LMs and RL}\label{lms-and-rl}
+
+There is therefore a potential synergy between LMs which can bring knowledge about the world, and RL which can align and correct this knowledge by interacting with an environment. It is especially interesting from a RL point-of-view as the RL field mostly relies on the \textbf{Tabula-rasa} setup where everything is learned from scratch by the agent leading to:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi})}
+\item
+  Sample inefficiency
+\item
+  Unexpected behaviors from humans' eyes
+\end{enumerate}
+
+As a first attempt, the paper \href{https://arxiv.org/abs/2302.02662v1}{``Grounding Large Language Models with Online Reinforcement Learning''} tackled the problem of \textbf{adapting or aligning a LM to a textual environment using PPO}. They showed that the knowledge encoded in the LM lead to a fast adaptation to the environment (opening avenues for sample efficient RL agents) but also that such knowledge allowed the LM to better generalize to new tasks once aligned.
+
+\textbf{Video demonstration:} \href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/papier_v4.mp4}{Open original video}
+
+Another direction studied in \href{https://arxiv.org/abs/2302.06692}{``Guiding Pretraining in Reinforcement Learning with Large Language Models''} was to keep the LM frozen but leverage its knowledge to \textbf{guide an RL agent's exploration}. Such a method allows the RL agent to be guided towards human-meaningful and plausibly useful behaviors without requiring a human in the loop during training.
+
+\CourseFigure{language2.png}{Using language-model knowledge to guide reinforcement-learning agents -- Source: \protect\href{https://ai.googleblog.com/2022/08/towards-helpful-robots-grounding.html}{Towards Helpful Robots: Grounding Language in Robotic Affordances} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/language2.png}{[original image]}}
+
+Several limitations make these works still very preliminary such as the need to convert the agent's observation to text before giving it to a LM as well as the compute cost of interacting with very large LMs.
+
+\subsection{Further reading}\label{further-reading-4}
+
+For more information we recommend you check out the following resources:
+
+\begin{itemize}
+\item
+  \href{https://ai.googleblog.com/2023/02/google-research-2022-beyond-robotics.html}{Google Research, 2022 \& beyond: Robotics}
+\item
+  \href{https://arxiv.org/abs/2202.01771}{Pre-Trained Language Models for Interactive Decision-Making}
+\item
+  \href{https://arxiv.org/abs/2302.02662v1}{Grounding Large Language Models with Online Reinforcement Learning}
+\item
+  \href{https://arxiv.org/abs/2302.06692}{Guiding Pretraining in Reinforcement Learning with Large Language Models}
+\end{itemize}
+
+\subsection{Author}\label{author-5}
+
+This section was written by \href{https://twitter.com/ClementRomac}{Clément Romac}
+
+\section{An Introduction to Unreal Learning Agents}\label{an-introduction-to-unreal-learning-agents}
+
+\href{https://dev.epicgames.com/community/learning/tutorials/8OWY/unreal-engine-learning-agents-introduction}{Learning Agents} is an Unreal Engine (UE) plugin that allows you \textbf{to train AI characters using machine learning (ML) in Unreal}.
+
+It's an exciting new plugin where you can create unique environments using Unreal Engine and train your agents.
+
+Let's see how you can \textbf{get started and train a car to drive in an Unreal Engine Environment}.
+
+\CourseFigure{learning-agents-car.png}{Unreal Engine Learning Agents: driving-agent tutorial -- Source: \protect\href{https://dev.epicgames.com/community/learning/tutorials/qj2O/unreal-engine-learning-to-drive}{Learning Agents Driving Car Tutorial} \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/learning-agents-car.png}{[original image]}}
+
+\subsection{Case 1: I don't know anything about Unreal Engine and Beginners in Unreal Engine}\label{case-1-i-dont-know-anything-about-unreal-engine-and-beginners-in-unreal-engine}
+
+If you're new to Unreal Engine, don't be scared! We listed two courses you need to follow to be able to use Learning Agents:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Master the Basics: Begin by watching this course \href{https://dev.epicgames.com/community/learning/courses/ZpX/your-first-hour-in-unreal-engine-5/E7L/introduction-to-your-first-hour-in-unreal-engine-5}{your first hour in Unreal Engine 5}. This comprehensive course will \textbf{lay down the foundational knowledge you need to use Unreal}.
+\item
+  Dive into Blueprints: Explore the world of Blueprints, the visual scripting component of Unreal Engine. \href{https://youtu.be/W0brCeJNMqk?si=zy4t4t1l6FMIzbpz}{This video course} will familiarize you with this essential tool.
+\end{enumerate}
+
+Armed with the basics, \textbf{you're now prepared to play with Learning Agents}:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\item
+  Get the Big Picture of Learning Agents by \href{https://dev.epicgames.com/community/learning/tutorials/8OWY/unreal-engine-learning-agents-introduction}{reading this informative overview}.
+\item
+  \href{https://dev.epicgames.com/community/learning/tutorials/qj2O/unreal-engine-learning-to-drive}{Teach a Car to Drive using Reinforcement Learning in Learning Agents}.
+\item
+  \href{https://www.youtube.com/watch?v=NwYUNlFvajQ}{Check Imitation Learning with the Unreal Engine 5.3 Learning Agents Plugin}
+\end{enumerate}
+
+\subsection{Case 2: I'm familiar with Unreal}\label{case-2-im-familiar-with-unreal}
+
+For those already acquainted with Unreal Engine, you can jump straight into Learning Agents with these two tutorials:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Get the Big Picture of Learning Agents by \href{https://dev.epicgames.com/community/learning/tutorials/8OWY/unreal-engine-learning-agents-introduction}{reading this informative overview}.
+\item
+  \href{https://dev.epicgames.com/community/learning/tutorials/qj2O/unreal-engine-learning-to-drive}{Teach a Car to Drive using Reinforcement Learning in Learning Agents}. .
+\item
+  \href{https://www.youtube.com/watch?v=NwYUNlFvajQ}{Check Imitation Learning with the Unreal Engine 5.3 Learning Agents Plugin}
+\end{enumerate}
+
+\section{Godot RL Agents}\label{godot-rl-agents}
+
+\href{https://github.com/edbeeching/godot_rl_agents}{Godot RL Agents} is an Open Source package that allows video game creators, AI researchers, and hobbyists the opportunity \textbf{to learn complex behaviors for their Non Player Characters or agents}.
+
+The library provides:
+
+\begin{itemize}
+\item
+  An interface between games created in the \href{https://godotengine.org/}{Godot Engine} and Machine Learning algorithms running in Python
+\item
+  Wrappers for four well known rl frameworks: \href{https://stable-baselines3.readthedocs.io/en/master/}{StableBaselines3}, \href{https://docs.cleanrl.dev/}{CleanRL}, \href{https://www.samplefactory.dev/}{Sample Factory} and \href{https://docs.ray.io/en/latest/rllib-algorithms.html}{Ray RLLib}
+\item
+  Support for memory-based agents with LSTM or attention based interfaces
+\item
+  Support for \emph{2D and 3D games}
+\item
+  A suite of \emph{AI sensors} to augment your agent's capacity to observe the game world
+\item
+  Godot and Godot RL Agents are \textbf{completely free and open source under a very permissive MIT license}. No strings attached, no royalties, nothing.
+\end{itemize}
+
+You can find out more about Godot RL agents on their \href{https://github.com/edbeeching/godot_rl_agents}{GitHub page} or their AAAI-2022 Workshop \href{https://arxiv.org/abs/2112.03636}{paper}. The library's creator, \href{https://edbeeching.github.io/}{Ed Beeching}, is a Research Scientist here at Hugging Face.
+
+Installation of the library is simple: \texttt{pip\ install\ godot-rl}
+
+\subsection{Create a custom RL environment with Godot RL Agents}\label{create-a-custom-rl-environment-with-godot-rl-agents}
+
+In this section, you will \textbf{learn how to create a custom environment in the Godot Game Engine} and then implement an AI controller that learns to play with Deep Reinforcement Learning.
+
+The example game we create today is simple, \textbf{but shows off many of the features of the Godot Engine and the Godot RL Agents library}. You can then dive into the examples for more complex environments and behaviors.
+
+The environment we will be building today is called Ring Pong, the game of pong but the pitch is a ring and the paddle moves around the ring. The \textbf{objective is to keep the ball bouncing inside the ring}.
+
+\CourseFigure{ringpong_frame.png}{Ring Pong: a custom environment built in Godot \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/ringpong.gif}{[original image]}}
+
+\subsubsection{Installing the Godot Game Engine}\label{installing-the-godot-game-engine}
+
+The \href{https://godotengine.org/}{Godot game engine} is an open source tool for the \textbf{creation of video games, tools and user interfaces}.
+
+Godot Engine is a feature-packed, cross-platform game engine designed to create 2D and 3D games from a unified interface. It provides a comprehensive set of common tools, so users \textbf{can focus on making games without having to reinvent the wheel}. Games can be exported in one click to a number of platforms, including the major desktop platforms (Linux, macOS, Windows) as well as mobile (Android, iOS) and web-based (HTML5) platforms.
+
+While we will guide you through the steps to implement your agent, you may wish to learn more about the Godot Game Engine. Their \href{https://docs.godotengine.org/en/latest/index.html}{documentation} is thorough, and there are many tutorials on YouTube we would also recommend \href{https://www.gdquest.com/}{GDQuest}, \href{https://kidscancode.org/godot_recipes/4.x/}{KidsCanCode} and \href{https://www.youtube.com/channel/UCczi7Aq_dTKrQPF5ZV5J3gg}{Bramwell} as sources of information.
+
+In order to create games in Godot, \textbf{you must first download the editor}. Godot RL Agents supports the latest version of Godot, Godot 4.0.
+
+Which can be downloaded at the following links:
+
+\begin{itemize}
+\item
+  \href{https://downloads.tuxfamily.org/godotengine/4.0.1/Godot_v4.0.1-stable_win64.exe.zip}{Windows}
+\item
+  \href{https://downloads.tuxfamily.org/godotengine/4.0.1/Godot_v4.0.1-stable_macos.universal.zip}{Mac}
+\item
+  \href{https://downloads.tuxfamily.org/godotengine/4.0.1/Godot_v4.0.1-stable_linux.x86_64.zip}{Linux}
+\end{itemize}
+
+\subsubsection{Loading the starter project}\label{loading-the-starter-project}
+
+We provide two versions of the codebase:
+
+\begin{itemize}
+\item
+  \href{https://drive.google.com/file/d/1C7xd3TibJHlxFEJPBgBLpksgxrFZ3D8e/view?usp=share_link}{A starter project, to download and follow along for this tutorial}
+\item
+  \href{https://drive.google.com/file/d/1k-b2Bu7uIA6poApbouX4c3sq98xqogpZ/view?usp=share_link}{A final version of the project, for comparison and debugging.}
+\end{itemize}
+
+To load the project, in the Godot Project Manager click \textbf{Import}, navigate to where the files are located and load the \textbf{project.godot} file.
+
+If you press F5 or play in the editor, you should be able to play the game in human mode. There are several instances of the game running, this is because we want to speed up training our AI agent with many parallel environments.
+
+\subsubsection{Installing the Godot RL Agents plugin}\label{installing-the-godot-rl-agents-plugin}
+
+The Godot RL Agents plugin can be installed from the Github repo or with the Godot Asset Lib in the editor.
+
+First click on the AssetLib and search for ``rl''
+
+\CourseFigure{godot1.png}{Godot AssetLib: searching for the RL Agents plugin \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot1.png}{[original image]}}
+
+Then click on Godot RL Agents, click Download and unselect the LICENSE and README .md files. Then click install.
+
+\CourseFigure{godot2.png}{Godot: installing the RL Agents plugin \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot2.png}{[original image]}}
+
+The Godot RL Agents plugin is now downloaded to your machine. Now click on Project -\textgreater{} Project settings and enable the addon:
+
+\CourseFigure{godot3.png}{Godot project settings: enabling the RL Agents add-on \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot3.png}{[original image]}}
+
+\subsubsection{Adding the AI controller}\label{adding-the-ai-controller}
+
+We now want to add an AI controller to our game. Open the player.tscn scene, on the left you should see a hierarchy of nodes that looks like this:
+
+\CourseFigure{godot4.png}{Godot scene tree before adding the AI controller \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot4.png}{[original image]}}
+
+Right click the \textbf{Player} node and click \textbf{Add Child Node.} There are many nodes listed here, search for AIController3D and create it.
+
+\CourseFigure{godot5.png}{Godot: adding an AIController3D child node \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot5.png}{[original image]}}
+
+The AI Controller Node should have been added to the scene tree, next to it is a scroll. Click on it to open the script that is attached to the AIController. The Godot game engine uses a scripting language called GDScript, which is syntactically similar to python. The script contains methods that need to be implemented in order to get our AI controller working.
+
+\begin{lstlisting}
+#-- Methods that need implementing using the "extend script" option in Godot --#
+func get_obs() -> Dictionary:
+	assert(false, "the get_obs method is not implemented when extending from ai_controller")
+	return {"obs":[]}
+
+func get_reward() -> float:
+	assert(false, "the get_reward method is not implemented when extending from ai_controller")
+	return 0.0
+
+func get_action_space() -> Dictionary:
+	assert(false, "the get get_action_space method is not implemented when extending from ai_controller")
+	return {
+		"example_actions_continous" : {
+			"size": 2,
+			"action_type": "continuous"
+		},
+		"example_actions_discrete" : {
+			"size": 2,
+			"action_type": "discrete"
+		},
+		}
+
+func set_action(action) -> void:
+	assert(false, "the get set_action method is not implemented when extending from ai_controller")
+# -----------------------------------------------------------------------------#
+\end{lstlisting}
+
+In order to implement these methods, we will need to create a class that inherits from AIController3D. This is easy to do in Godot, and is called ``extending'' a class.
+
+Right click the AIController3D Node and click ``Extend Script'' and call the new script \texttt{controller.gd}. You should now have an almost empty script file that looks like this:
+
+\begin{lstlisting}
+extends AIController3D
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass # Replace with function body.
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta):
+	pass
+\end{lstlisting}
+
+We will now implement the 4 missing methods, delete this code, and replace it with the following:
+
+\begin{lstlisting}
+extends AIController3D
+
+# Stores the action sampled for the agent's policy, running in python
+var move_action : float = 0.0
+
+func get_obs() -> Dictionary:
+	# get the balls position and velocity in the paddle's frame of reference
+	var ball_pos = to_local(_player.ball.global_position)
+	var ball_vel = to_local(_player.ball.linear_velocity)
+	var obs = [ball_pos.x, ball_pos.z, ball_vel.x/10.0, ball_vel.z/10.0]
+
+	return {"obs":obs}
+
+func get_reward() -> float:
+	return reward
+
+func get_action_space() -> Dictionary:
+	return {
+		"move_action" : {
+			"size": 1,
+			"action_type": "continuous"
+		},
+		}
+
+func set_action(action) -> void:
+	move_action = clamp(action["move_action"][0], -1.0, 1.0)
+\end{lstlisting}
+
+We have now defined the agent's observation, which is the position and velocity of the ball in its local coordinate space. We have also defined the action space of the agent, which is a single continuous value ranging from -1 to +1.
+
+The next step is to update the Player's script to use the actions from the AIController, edit the Player's script by clicking on the scroll next to the player node, update the code in \texttt{Player.gd} to the following:
+
+\begin{lstlisting}
+extends Node3D
+
+@export var rotation_speed = 3.0
+@onready var ball = get_node("../Ball")
+@onready var ai_controller = $AIController3D
+
+func _ready():
+	ai_controller.init(self)
+
+func game_over():
+	ai_controller.done = true
+	ai_controller.needs_reset = true
+
+func _physics_process(delta):
+	if ai_controller.needs_reset:
+		ai_controller.reset()
+		ball.reset()
+		return
+
+	var movement : float
+	if ai_controller.heuristic == "human":
+		movement = Input.get_axis("rotate_anticlockwise", "rotate_clockwise")
+	else:
+		movement = ai_controller.move_action
+	rotate_y(movement*delta*rotation_speed)
+
+func _on_area_3d_body_entered(body):
+	ai_controller.reward += 1.0
+\end{lstlisting}
+
+We now need to synchronize between the game running in Godot and the neural network being trained in Python. Godot RL agents provides a node that does just that. Open the train.tscn scene, right click on the root node, and click ``Add child node''. Then, search for ``sync'' and add a Godot RL Agents Sync node. This node handles the communication between Python and Godot over TCP.
+
+You can run training live in the editor, by first launching the python training with \texttt{gdrl}.
+
+In this simple example, a reasonable policy is learned in several minutes. You may wish to speed up training, click on the Sync node in the train scene, and you will see there is a ``Speed Up'' property exposed in the editor:
+
+\CourseFigure{godot6.png}{Godot RL Agents Sync node: Speed Up property \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit9/godot6.png}{[original image]}}
+
+Try setting this property up to 8 to speed up training. This can be a great benefit on more complex environments, like the multi-player FPS we will learn about in the next chapter.
+
+\subsubsection{Export model}\label{export-model}
+
+\href{https://github.com/edbeeching/godot_rl_agents/tree/main?tab=readme-ov-file\#exporting-and-loading-your-trained-agent-in-onnx-format}{Reference doc}
+
+Let's put aside the Godot editor for now. We'll need to use terminals to run some commands in order to save models we trained.
+
+The latest version of the Godot RL library provides experimental support for onnx models with the Stable Baselines 3, rllib, and CleanRL training frameworks.
+
+For example, let's use the Stable Baselines 3 as the framework. Train your agent using the \href{https://github.com/edbeeching/godot_rl_agents/blob/main/examples/stable_baselines3_example.py}{sb3 example} (\href{https://github.com/edbeeching/godot_rl_agents/blob/main/docs/ADV_STABLE_BASELINES_3.md\#train-a-model-from-scratch}{instructions for using the script}), enabling the option \texttt{-\/-onnx\_export\_path=model.onnx}
+
+Below is an example command line to execute:
+
+\begin{lstlisting}
+cd <....> # go into this Godot project directory
+python stable_baselines3_example.py --timesteps=100_000 --onnx_export_path=model.onnx --save_model_path=model.zip --save_checkpoint_frequency=20_000 --experiment_name=exp1
+\end{lstlisting}
+
+If things work correctly, you should see messages printed out in the terminal like below:
+
+\begin{lstlisting}
+No game binary has been provided, please press PLAY in the Godot editor
+waiting for remote GODOT connection on port 11008
+\end{lstlisting}
+
+\begin{quote}\raggedright
+If you encounter failures about import error in stable\_baselines3\_example script: ``ImportError: cannot import name `export\_model\_as\_onnx' from `godot\_rl.wrappers.onnx.stable\_baselines\_export'\,'', follow the answer in \href{https://github.com/edbeeching/godot_rl_agents/issues/203}{this issue} here.
+\end{quote}
+
+Now it's time to switch back to the Godot editor, and hit PLAY on the top right corner. Once you hit that, the game scene will pop up showing AI training. In the meantime, the terminal will start to print out metrics. Wait for the training to finish, and if things work correctly, you should be able to find the file \texttt{model.onnx} in the Godot project directory.
+
+\subsubsection{Apply AI in the game!}\label{apply-ai-in-the-game}
+
+Now let's apply this trained model to the game!
+
+In the Godot editor, find the Sync node in \texttt{train.tscn}:
+
+\begin{itemize}
+\item
+  change the control mode to \texttt{Onnx\ Inference} from the dropdown
+\item
+  set \texttt{Onnx\ Model\ Path} to the model file name, in our case here it's \texttt{model.onnx}
+\end{itemize}
+
+To run this game, we need the mono version (i.e., the .NET version) of the Godot editor, you can download it from the Godot official page. We need to install \href{https://dotnet.microsoft.com/en-us/download}{.NET} as well.
+
+Most likely you wil encounter errors in the first attempt. Below are the scenarios to help you resolve the errors.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  issue about \texttt{Invalid\ Call.\ Nonexistent\ function\ \textquotesingle{}new\textquotesingle{}\ in\ base\ \textquotesingle{}CSharpScript\textquotesingle{}}: \href{https://github.com/edbeeching/godot_rl_agents/blob/main/docs/TROUBLESHOOTING.md}{solution}
+\item
+  errors about \texttt{onnxruntime} on MacOS: \href{https://github.com/microsoft/onnxruntime/issues/9707}{solution}
+\end{enumerate}
+
+\subsubsection{There's more!}\label{theres-more}
+
+We have only scratched the surface of what can be achieved with Godot RL Agents, the library includes custom sensors and cameras to enrich the information available to the agent. Take a look at the \href{https://github.com/edbeeching/godot_rl_agents_examples}{examples} to find out more!
+
+For the ability to export the trained model to .onnx so that you can run inference directly from Godot without the Python server, and other useful training options, take a look at the \href{https://github.com/edbeeching/godot_rl_agents/blob/main/docs/ADV_STABLE_BASELINES_3.md}{advanced SB3 tutorial}.
+
+\subsection{Author}\label{author-6}
+
+This section was written by \href{https://twitter.com/edwardbeeching}{Edward Beeching}
+
+\section{Brief introduction to RL documentation}\label{brief-introduction-to-rl-documentation}
+
+In this advanced topic, we address the question: \textbf{how should we monitor and keep track of powerful reinforcement learning agents that we are training in the real world and interfacing with humans?}
+
+As machine learning systems have increasingly impacted modern life, the \textbf{call for the documentation of these systems has grown}.
+
+Such documentation can cover aspects such as the training data used -- where it is stored, when it was collected, who was involved, etc. -- or the model optimization framework -- the architecture, evaluation metrics, relevant papers, etc. -- and more.
+
+Today, model cards and datasheets are becoming increasingly available. For example, on the Hub (see documentation \href{https://huggingface.co/docs/hub/model-cards}{here}).
+
+If you click on a \href{https://huggingface.co/models}{popular model on the Hub}, you can learn about its creation process.
+
+These model and data specific logs are designed to be completed when the model or dataset are created, leaving them to go un-updated when these models are built into evolving systems in the future.
+
+\subsection{Motivating Reward Reports}\label{motivating-reward-reports}
+
+Reinforcement learning systems are fundamentally designed to optimize based on measurements of reward and time. While the notion of a reward function can be mapped nicely to many well-understood fields of supervised learning (via a loss function), understanding of how machine learning systems evolve over time is limited.
+
+To that end, the authors introduce \href{https://www.notion.so/Brief-introduction-to-RL-documentation-b8cbda5a6f5242338e0756e6bef72af4}{\emph{Reward Reports for Reinforcement Learning}} (the pithy naming is designed to mirror the popular papers \emph{Model Cards for Model Reporting} and \emph{Datasheets for Datasets}). The goal is to propose a type of documentation focused on the \textbf{human factors of reward} and \textbf{time-varying feedback systems}.
+
+Building on the documentation frameworks for \href{https://arxiv.org/abs/1810.03993}{model cards} and \href{https://arxiv.org/abs/1803.09010}{datasheets} proposed by Mitchell et al.~and Gebru et al., we argue the need for Reward Reports for AI systems.
+
+\textbf{Reward Reports} are living documents for proposed RL deployments that demarcate design choices.
+
+However, many questions remain about the applicability of this framework to different RL applications, roadblocks to system interpretability, and the resonances between deployed supervised machine learning systems and the sequential decision-making utilized in RL.
+
+At a minimum, Reward Reports are an opportunity for RL practitioners to deliberate on these questions and begin the work of deciding how to resolve them in practice.
+
+\subsection{Capturing temporal behavior with documentation}\label{capturing-temporal-behavior-with-documentation}
+
+The core piece specific to documentation designed for RL and feedback-driven ML systems is a \emph{change-log}. The change-log updates information from the designer (changed training parameters, data, etc.) along with noticed changes from the user (harmful behavior, unexpected responses, etc.).
+
+The change log is accompanied by update triggers that encourage monitoring these effects.
+
+\subsection{Contributing}\label{contributing}
+
+Some of the most impactful RL-driven systems are multi-stakeholder in nature and behind the closed doors of private corporations. These corporations are largely without regulation, so the burden of documentation falls on the public.
+
+If you are interested in contributing, we are building Reward Reports for popular machine learning systems on a public record on \href{https://github.com/RewardReports/reward-reports}{GitHub}.
+
+For further reading, you can visit the Reward Reports \href{https://arxiv.org/abs/2204.10817}{paper} or look \href{https://github.com/RewardReports/reward-reports/tree/main/examples}{an example report}.
+
+\subsection{Author}\label{author-7}
+
+This section was written by \href{https://twitter.com/natolambert}{Nathan Lambert}
+
+\section{Interesting Environments to try}\label{interesting-environments-to-try}
+
+Here we provide a list of interesting environments you can try to train your agents on:
+
+\subsection{DIAMBRA Arena}\label{diambra-arena}
+
+\CourseFigure{diambraarena.png}{DIAMBRA Arena: arcade environments for reinforcement learning \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/diambraarena.png}{[original image]}}
+
+DIAMBRA Arena is a software package featuring a collection of high-quality environments for Reinforcement Learning research and experimentation. It provides a standard interface to popular arcade emulated video games, offering a Python API fully compliant with OpenAI Gym/Gymnasium format, that makes its adoption smooth and straightforward.
+
+It supports all major Operating Systems (Linux, Windows and MacOS) and can be easily installed via \href{https://pypi.org/project/diambra-arena/}{Python PIP}. It is completely free to use, the user only needs to register on the \href{https://diambra.ai/register/}{official website}.
+
+In addition, its \href{https://github.com/diambra/}{GitHub repository} provides a collection of examples covering main use cases of interest that can be run in just a few steps.
+
+\paragraph{Main Features}\label{main-features}
+
+All environments are episodic Reinforcement Learning tasks, with discrete actions (gamepad buttons) and observations composed by screen pixels plus additional numerical data (RAM values like characters health bars or characters stage side).
+
+They all support both single player (1P) as well as two players (2P) mode, making them the perfect resource to explore Standard RL, Competitive Multi-Agent, Competitive Human-Agent, Self-Play, Imitation Learning and Human-in-the-Loop.
+
+\href{https://docs.diambra.ai/envs/games/}{Interfaced games} have been selected among the most popular fighting retro-games. While sharing the same fundamental mechanics, they provide different challenges, with specific features such as different type and number of characters, how to perform combos, health bars recharging, etc.
+
+DIAMBRA Arena is built to maximize compatibility will all major Reinforcement Learning libraries. It natively provides interfaces with the two most important packages: \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable Baselines 3} and \href{https://docs.ray.io/en/latest/rllib/index.html}{Ray RLlib}, while Stable Baselines is also available but deprecated. Their usage is illustrated in the \href{https://docs.diambra.ai/}{official documentation} and in the \href{https://github.com/diambra/agents}{DIAMBRA Agents examples repository}. It can easily be interfaced with any other package in a similar way.
+
+\subsubsection{Competition Platform}\label{competition-platform}
+
+DIAMBRA also provides a competition platform fully integrated with the Hugging Face Hub, on which you can submit your trained agents and compete with other coders around the globe in epic video games tournaments!
+
+It features a public leaderboard where users are ranked by the best score achieved by their agents in our different environments.
+
+It also offers the possibility to unlock cool achievements depending on the performances of your agent.
+
+Submitted agents are evaluated and their episodes are streamed on \href{https://www.twitch.tv/diambra_ai}{DIAMBRA Twitch channel}.
+
+\paragraph{References}\label{references}
+
+To start using this environment, check these resources:
+
+\begin{itemize}
+\item
+  \href{https://docs.diambra.ai/}{Official Docs}
+\item
+  \href{https://diambra.ai}{Competition Platform}
+\item
+  \href{https://github.com/diambra/}{GitHub}
+\item
+  \href{https://diambra.ai/discord}{Discord}
+\end{itemize}
+
+\subsection{MineRL}\label{minerl}
+
+\CourseFigure{minerl.jpg}{MineRL: Minecraft-based reinforcement learning tasks \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/minerl.jpg}{[original image]}}
+
+MineRL is a Python library that provides a Gym interface for interacting with the video game Minecraft, accompanied by datasets of human gameplay. Every year there are challenges with this library. Check the \href{https://minerl.io/}{website}
+
+To start using this environment, check these resources:
+
+\begin{itemize}
+\item
+  \href{https://www.youtube.com/watch?v=z6PTrGifupU}{What is MineRL?}
+\item
+  \href{https://www.youtube.com/watch?v=8yIrWcyWGek}{First steps in MineRL}
+\item
+  \href{https://minerl.readthedocs.io/en/latest/}{MineRL documentation and tutorials}
+\end{itemize}
+
+\subsection{DonkeyCar Simulator}\label{donkeycar-simulator}
+
+\CourseFigure{donkeycar.jpg}{DonkeyCar simulation environment \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/donkeycar.jpg}{[original image]}}
+
+Donkey is a Self Driving Car Platform for hobby remote control cars. This simulator version is built on the Unity game platform. It uses their internal physics and graphics and connects to a donkey Python process to use our trained model to control the simulated Donkey (car).
+
+To start using this environment, check these resources:
+
+\begin{itemize}
+\item
+  \href{https://docs.donkeycar.com/guide/deep_learning/simulator/}{DonkeyCar Simulator documentation}
+\item
+  \href{https://www.youtube.com/watch?v=ngK33h00iBE}{Learn to Drive Smoothly (Antonin Raffin's tutorial) Part 1}
+\item
+  \href{https://www.youtube.com/watch?v=DUqssFvcSOY}{Learn to Drive Smoothly (Antonin Raffin's tutorial) Part 2}
+\item
+  \href{https://www.youtube.com/watch?v=v8j2bpcE4Rg}{Learn to Drive Smoothly (Antonin Raffin's tutorial) Part 3}
+\item
+  Pretrained agents:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \url{https://huggingface.co/araffin/tqc-donkey-mountain-track-v0}
+  \item
+    \url{https://huggingface.co/araffin/tqc-donkey-avc-sparkfun-v0}
+  \item
+    \url{https://huggingface.co/araffin/tqc-donkey-minimonaco-track-v0}
+  \end{itemize}
+\end{itemize}
+
+\subsection{Starcraft II}\label{starcraft-ii}
+
+\CourseFigure{alphastar.jpg}{AlphaStar and StarCraft II as reinforcement learning environments \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/alphastar.jpg}{[original image]}}
+
+Starcraft II is a famous \emph{real-time strategy game}. DeepMind has used this game for their Deep Reinforcement Learning research with \href{https://www.deepmind.com/blog/alphastar-mastering-the-real-time-strategy-game-starcraft-ii}{Alphastar}
+
+To start using this environment, check these resources:
+
+\begin{itemize}
+\item
+  \href{http://starcraftgym.com/}{Starcraft gym}
+\item
+  \href{https://www.youtube.com/watch?v=q59wap1ELQ4}{A. I. Learns to Play Starcraft 2 (Reinforcement Learning) tutorial}
+\end{itemize}
+
+\subsection{Author}\label{author-8}
+
+This section was written by \href{https://twitter.com/ThomasSimonini}{Thomas Simonini}
+
+\section{Student Works}\label{student-works}
+
+Since the launch of the Deep Reinforcement Learning Course, \textbf{many students have created amazing projects that you should check out and consider participating in}.
+
+If you've created an interesting project, don't hesitate to \href{https://github.com/huggingface/deep-rl-class}{add it to this list by opening a pull request on the GitHub repository}.
+
+The projects are \textbf{arranged based on the date of publication in this page}.
+
+\subsection{Space Scavanger AI}\label{space-scavanger-ai}
+
+This project is a space game environment with trained neural network for AI.
+
+AI is trained by Reinforcement learning algorithm based on UnityMLAgents and RLlib frameworks.
+
+\CourseFigure{spacescavangerai.png}{Student project: Space Scavanger AI \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/spacescavangerai.png}{[original image]}}
+
+Play the Game here \url{https://swingshuffle.itch.io/spacescalvagerai}
+
+Check the Unity project here \url{https://github.com/HighExecutor/SpaceScalvagerAI}
+
+\subsection{Neural Nitro}\label{neural-nitro}
+
+\CourseFigure{neuralnitro.png}{Student project: Neural Nitro racing environment \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/neuralnitro.png}{[original image]}}
+
+In this project, Sookeyy created a low poly racing game and trained a car to drive.
+
+Check out the demo here \url{https://sookeyy.itch.io/neuralnitro}
+
+\subsection{Space War}\label{space-war}
+
+\CourseFigure{spacewar.jpg}{Student project: Space War \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit12/spacewar.jpg}{[original image]}}
+
+In this project, Eric Dong recreates Bill Seiler's 1985 version of Space War in Pygame and uses reinforcement learning (RL) to train AI agents.
+
+This project is currently in development!
+
+\subsubsection{Demo}\label{demo}
+
+Dev/Edge version:
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://e-dong.itch.io/spacewar-dev}
+\end{itemize}
+
+Stable version:
+
+\begin{itemize}
+\item
+  \url{https://e-dong.itch.io/spacewar}
+\item
+  \url{https://huggingface.co/spaces/EricofRL/SpaceWarRL}
+\end{itemize}
+
+\subsubsection{Community blog posts}\label{community-blog-posts}
+
+TBA
+
+\subsubsection{Other links}\label{other-links}
+
+Check out the source here \url{https://github.com/e-dong/space-war-rl}\\
+Check out his blog here \url{https://dev.to/edong/space-war-rl-0-series-introduction-25dh}
+
+\subsection{Decision Transformers for Trading}\label{decision-transformers-for-trading}
+
+In this project, student has explored training a Decision Transformer for stock trading. In phase-1, offline training has been implemented. He intends to incorporate online fine-tuning in the next version.
+
+\CourseFigure{decision-transformers-trading.png}{Student project: Decision Transformers for Trading -- Source: \protect\href{https://www.youtube.com/watch?v=w4Bw8WYL8Ps}{Stanford CS25: V1 I Decision Transformer: Reinforcement Learning via Sequence Modeling} \protect\href{https://github.com/user-attachments/assets/41e3bc10-2594-4c05-b48f-17666cc8fb1c}{[original image]}}
+
+Check out the source here \url{https://github.com/ra9hur/Decision-Transformers-For-Trading}
+
+\end{document}

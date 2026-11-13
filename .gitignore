@@ -29,12 +29,10 @@ videos/
 logs/
 runs/
 tensorboard/
+results/
+trained-envs-executables/
+ml-agents/
 
-# Hugging Face / Stable-Baselines local outputs
-replay.mp4
-results.json
-config.json
-system_info.txt
 
 # OS/editor noise
 .DS_Store
@@ -42,3 +40,17 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+

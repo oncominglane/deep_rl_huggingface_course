@@ -1,0 +1,73 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Bonus Unit 2 (full Russian translation).
+% Compile with latexmk -pdf from notes/ru/ using ../preamble.tex.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unitbonus2/}}
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Hugging Face Deep RL / Бонусный модуль 2}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Подбор гиперпараметров}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Бонусный модуль 2: автоматический подбор гиперпараметров с Optuna}
+\author{Курс Hugging Face Deep RL\\\small Полная учебная версия на основе MDX}
+\date{}
+
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-1em}
+\begin{center}\small\color{secondary}Источник: курс Hugging Face Deep RL (оригинальный текст на английском языке).\end{center}
+\vspace{-0.45em}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.3em}
+
+\section{Введение}\label{introduction}
+
+Одна из важнейших задач в глубоком обучении с подкреплением --- \textbf{найти удачный набор гиперпараметров обучения}.
+
+\CourseFigure{optuna-logo.png}{Логотип библиотеки Optuna. \protect\href{https://raw.githubusercontent.com/optuna/optuna/master/docs/image/optuna-logo.png}{[оригинал изображения]}}
+
+\href{https://optuna.org/}{Optuna} --- библиотека, которая помогает автоматизировать этот поиск. В этом модуле мы немного изучим \textbf{теорию автоматического подбора гиперпараметров}. Сначала попробуем вручную оптимизировать параметры алгоритма DQN, который рассматривали в предыдущем модуле. Затем \textbf{научимся автоматизировать поиск с помощью Optuna}.
+
+\section{Руководство по Optuna}\label{optuna}
+
+Материал ниже основан на \href{https://araffin.github.io/tools-for-robotic-rl-icra2022/}{презентациях Антонена Раффена (Antonin Raffin) для конференции ICRA 2022}. Он является одним из основателей проектов Stable-Baselines и RL-Baselines3-Zoo.
+
+\subsection{Теория подбора гиперпараметров}
+
+\begin{coursenote}
+  \textbf{Видеолекция: теория подбора гиперпараметров}\par
+  \href{https://www.youtube.com/watch?v=AidFTOdGNFQ}{Смотреть на YouTube (AidFTOdGNFQ)}.
+\end{coursenote}
+
+\subsection{Практическое руководство по Optuna}
+
+\begin{coursenote}
+  \textbf{Видеоурок: Optuna}\par
+  \href{https://www.youtube.com/watch?v=ihP7E76KGOI}{Смотреть на YouTube (ihP7E76KGOI)}.
+\end{coursenote}
+
+Ноутбук $\rightarrow$ \href{https://colab.research.google.com/github/araffin/tools-for-robotic-rl-icra2022/blob/main/notebooks/optuna_lab.ipynb}{по этой ссылке}.
+
+\section{Практические задания}\label{hands-on}
+
+Теперь, когда ты научился пользоваться Optuna, вот несколько идей, как применить полученные знания:
+
+\begin{enumerate}[label=\textbf{\arabic*.},leftmargin=1.8em,itemsep=0.6em]
+  \item \textbf{Улучши результаты своего агента для LunarLander-v2}, используя Optuna для поиска более удачного набора гиперпараметров. Можешь также попробовать другую среду, например MountainCar-v0 или CartPole-v1.
+  \item \textbf{Улучши результаты своего агента для SpaceInvaders}.
+\end{enumerate}
+
+Выполнив эти задания, ты увидишь, насколько полезной и мощной может быть Optuna при обучении более эффективных агентов.
+
+Удачи и получай удовольствие от экспериментов!
+
+И наконец, нам было бы очень интересно \textbf{узнать, что ты думаешь о курсе и как мы могли бы его улучшить}. Если у тебя есть отзывы или предложения, пожалуйста, $\rightarrow$ \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполни эту форму}.
+
+\subsection*{Продолжай учиться и оставайся молодцом!}
+
+\end{document}

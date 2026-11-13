@@ -1,0 +1,610 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Bonus Unit 1 (complete MDX study edition).
+% Compile with latexmk -pdf from notes/en or notes/ru.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unitbonus1/}}
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Hugging Face Deep RL / Бонусный модуль 1}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Huggy}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Бонусный модуль 1: Обучаем Huggy и играем с ним}
+\author{Курс Hugging Face Deep RL\\\small Полная учебная версия на основе MDX}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.7em}
+\begin{center}\small\color{secondary}Источник: курс Hugging Face Deep RL (оригинальный английский текст).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Введение}\label{introduction}
+
+В этом бонусном модуле мы закрепим материал первого модуля: научим собаку Huggy подбирать брошенную палку, а затем сможем \href{https://huggingface.co/spaces/ThomasSimonini/Huggy}{поиграть с обученным агентом прямо в браузере}.
+
+\CourseFigure{thumbnail.png}{Huggy: обложка бонусного модуля курса Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit2/thumbnail.png}{[оригинал]}}
+
+Итак, приступим!
+
+\section{Как устроен Huggy}\label{how-huggy-works}
+
+Huggy --- среда для глубокого обучения с подкреплением, созданная Hugging Face на основе \href{https://blog.unity.com/technology/puppo-the-corgi-cuteness-overload-with-the-unity-ml-agents-toolkit}{Puppo the Corgi --- проекта команды Unity ML-Agents}. Среда разработана с помощью \href{https://unity.com/}{игрового движка Unity} и \href{https://github.com/Unity-Technologies/ml-agents}{ML-Agents}. ML-Agents --- набор инструментов для Unity, позволяющий \textbf{создавать собственные среды или использовать готовые среды для обучения агентов}.
+
+\CourseFigure{huggy.jpg}{Huggy: собака-агент в среде Unity ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy.jpg}{[оригинал]}}
+
+В этой среде мы хотим научить Huggy \textbf{подбирать брошенную нами палку. Для этого ему необходимо правильно перемещаться в её направлении}.
+
+\subsection{Пространство состояний: что воспринимает Huggy}\label{the-state-space-what-huggy-perceives.}
+
+Huggy не «видит» окружающую среду. Вместо этого мы предоставляем ему следующую информацию:
+
+\begin{itemize}
+\tightlist
+\item
+  Положение цели (палки)
+\item
+  Относительное положение Huggy и цели
+\item
+  Ориентация его лап.
+\end{itemize}
+
+На основе этой информации Huggy может \textbf{использовать свою политику, чтобы выбрать следующее действие для достижения цели}.
+
+\subsection{Пространство действий: как может двигаться Huggy}\label{the-action-space-what-moves-huggy-can-perform}
+
+\CourseFigure{huggy-action.jpg}{Управление суставными двигателями лап Huggy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy-action.jpg}{[оригинал]}}
+
+\textbf{Лапы Huggy приводятся в движение суставными двигателями}. Следовательно, чтобы добраться до цели, Huggy должен \textbf{научиться правильно вращать двигатели суставов каждой лапы и таким образом перемещаться}.
+
+\subsection{Функция вознаграждения}\label{the-reward-function}
+
+Функция вознаграждения спроектирована так, чтобы \textbf{Huggy достигал своей цели}: находил палку.
+
+Напомним, что одно из фундаментальных положений обучения с подкреплением --- \emph{гипотеза о вознаграждении}: цель можно описать как \textbf{максимизацию ожидаемого суммарного вознаграждения}.
+
+В нашем случае Huggy должен \textbf{приближаться к палке, не вращаясь слишком сильно}. Поэтому функция вознаграждения должна отражать именно эту цель.
+
+Наша функция вознаграждения:
+
+\CourseFigure{reward.jpg}{Функция вознаграждения для обучения Huggy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/reward.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Бонус за ориентацию}: мы \textbf{поощряем Huggy за приближение к цели}.
+\item
+  \emph{Штраф за время}: постоянный штраф на каждом шаге, который \textbf{побуждает его добраться до палки как можно быстрее}.
+\item
+  \emph{Штраф за вращение}: мы штрафуем Huggy, если \textbf{он слишком сильно вращается и слишком резко поворачивает}.
+\item
+  \emph{Вознаграждение за достижение цели}: поощряем Huggy за то, что \textbf{он достиг цели}.
+\end{itemize}
+
+Если вы хотите увидеть математическое описание этой функции вознаграждения, посмотрите \href{https://blog.unity.com/technology/puppo-the-corgi-cuteness-overload-with-the-unity-ml-agents-toolkit}{презентацию Puppo the Corgi}.
+
+\subsection{Обучение Huggy}\label{train-huggy}
+
+Задача Huggy --- \textbf{научиться правильно и как можно быстрее бежать к цели}. Для этого на каждом шаге, получив наблюдение среды, он должен решить, как вращать суставные двигатели лап, чтобы двигаться правильно (без избыточного вращения) и в направлении цели.
+
+Цикл обучения выглядит следующим образом:
+
+\CourseFigure{huggy-loop.jpg}{Цикл взаимодействия агента Huggy со средой и его обучения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy-loop.jpg}{[оригинал]}}
+
+Среда обучения выглядит так:
+
+\CourseFigure{training-env.jpg}{Несколько параллельных тренировочных арен со случайным положением палки \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/training-env.jpg}{[оригинал]}}
+
+Здесь \textbf{палка появляется в случайной точке}. Когда Huggy достигает её, палка возникает в другом месте. Для обучения мы создали \textbf{несколько копий среды}. Это ускоряет обучение, поскольку агент получает более разнообразный опыт.
+
+Теперь, когда у вас есть общее представление о среде, вы готовы обучить Huggy подбирать палку.
+
+Для этого мы воспользуемся \href{https://github.com/Unity-Technologies/ml-agents}{ML-Agents}. Не переживайте, если раньше не работали с этим набором инструментов. В данном модуле мы обучим Huggy в Google Colab, а затем вы сможете загрузить своего обученного агента и поиграть с ним прямо в браузере.
+
+В одном из следующих модулей мы подробнее изучим ML-Agents и принципы его работы. А пока упростим задачу и воспользуемся готовой реализацией.
+
+\section{Обучаем Huggy и играем с ним}\label{lets-train-and-play-with-huggy}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/bonus-unit1/bonus-unit1.ipynb}{Открыть ноутбук с обучением Huggy в Google Colab}
+
+Мы настоятельно \textbf{рекомендуем студентам выполнять практические задания в Google Colab}, а не на личных компьютерах.
+
+Используя Google Colab, \textbf{можно сосредоточиться на обучении и экспериментах, не отвлекаясь на технические вопросы} настройки окружения.
+
+\subsection{Приступим к обучению Huggy}\label{lets-train-huggy}
+
+\textbf{Чтобы начать обучение Huggy, нажмите кнопку Open in Colab}:
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/bonus-unit1/bonus-unit1.ipynb}{Открыть в Google Colab}
+
+\CourseFigure{thumbnail.png}{Huggy: обложка бонусного модуля курса Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit2/thumbnail.png}{[оригинал]}}
+
+В этом ноутбуке мы закрепим материал первого модуля: \textbf{научим Huggy подбирать палку и затем поиграем с обученным агентом прямо в браузере}.
+
+\CourseFigure{huggy.jpg}{Huggy: собака-агент в среде Unity ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy.jpg}{[оригинал]}}
+
+\subsubsection{Среда}\label{the-environment}
+
+\begin{itemize}
+\tightlist
+\item
+  Huggy --- собака-агент в среде, созданной \href{https://twitter.com/ThomasSimonini}{Томасом Симонини} на основе проекта \href{https://blog.unity.com/technology/puppo-the-corgi-cuteness-overload-with-the-unity-ml-agents-toolkit}{Puppo the Corgi}.
+\end{itemize}
+
+\subsubsection{Используемая библиотека}\label{the-library-used}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/Unity-Technologies/ml-agents}{MLAgents}
+\end{itemize}
+
+Мы постоянно стараемся улучшать наши руководства, поэтому \textbf{если вы обнаружили проблему в этом ноутбуке}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создайте issue в репозитории GitHub}.
+
+\subsection{Цели практического ноутбука}\label{objectives-of-this-notebook}
+
+По окончании работы с ноутбуком вы сможете:
+
+\begin{itemize}
+\tightlist
+\item
+  Разобраться в \textbf{пространстве состояний, пространстве действий и функции вознаграждения}, используемых для обучения Huggy.
+\item
+  \textbf{Обучить собственного Huggy} подбирать палку.
+\item
+  \textbf{Играть с обученным Huggy прямо в браузере}.
+\end{itemize}
+
+\subsection{Предварительные требования}\label{prerequisites}
+
+Прежде чем приступить к ноутбуку, необходимо:
+
+{[} {]} \textbf{Разобраться с основами обучения с подкреплением} (MC, TD, гипотеза о вознаграждении и т. д.), пройдя первый модуль.
+
+{[} {]} \textbf{Прочитать введение в работу Huggy} в бонусном модуле 1.
+
+\subsection{Настройка GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Для \textbf{ускорения обучения агента мы будем использовать GPU}. Перейдите в \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Google Colab: изменение типа среды выполнения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Выберите \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}.
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Google Colab: выбор GPU как аппаратного ускорителя \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+\subsection{Клонирование репозитория}\label{clone-the-repository}
+
+\begin{itemize}
+\tightlist
+\item
+  Нужно клонировать репозиторий, содержащий \textbf{ML-Agents}.
+\end{itemize}
+
+\begin{lstlisting}
+
+# Clone the repository (can take 3min)
+git clone --depth 1 https://github.com/Unity-Technologies/ml-agents
+\end{lstlisting}
+
+\subsection{Настройка виртуального окружения}\label{setup-the-virtual-environment}
+
+\begin{itemize}
+\item
+  Для корректной работы \textbf{ML-Agents} в Colab версия Python должна соответствовать требованиям этой библиотеки.
+\item
+  Поддерживаемую версию Python можно узнать по параметру \texttt{python\_requires} в файлах \texttt{setup.py}. Эти файлы нужны для установки \textbf{ML-Agents}; они расположены по следующим путям:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \texttt{/content/ml-agents/ml-agents/setup.py}
+  \item
+    \texttt{/content/ml-agents/ml-agents-envs/setup.py}
+  \end{itemize}
+\item
+  Текущая версия Python в Colab (её можно проверить с помощью \texttt{!python\ -\/-version}) не соответствует параметру \texttt{python\_requires} библиотеки. Из-за этого установка может завершиться без явной ошибки, однако при последующем выполнении команд возникнут такие сообщения:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \texttt{/bin/bash:\ line\ 1:\ mlagents-learn:\ command\ not\ found}
+  \item
+    \texttt{/bin/bash:\ line\ 1:\ mlagents-push-to-hf:\ command\ not\ found}
+  \end{itemize}
+\item
+  Для решения проблемы создадим виртуальное окружение с версией Python, совместимой с \textbf{ML-Agents}.
+\end{itemize}
+
+\texttt{Примечание:} \emph{Для совместимости с будущими версиями всегда проверяйте параметр \texttt{python\_requires} в установочных файлах. Если версия Python в Colab не поддерживается, укажите в приведённом ниже скрипте максимально поддерживаемую библиотекой версию Python}.
+
+\begin{lstlisting}
+
+# Colab's Current Python Version (Incompatible with ML-Agents)
+!python --version
+\end{lstlisting}
+
+\begin{lstlisting}
+
+# Install virtualenv and create a virtual environment
+!pip install virtualenv
+!virtualenv myenv
+
+# Download and install Miniconda
+!wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+!chmod +x Miniconda3-latest-Linux-x86_64.sh
+!./Miniconda3-latest-Linux-x86_64.sh -b -f -p /usr/local
+
+# Activate Miniconda and install Python ver 3.10.12
+!source /usr/local/bin/activate
+!conda install -q -y --prefix /usr/local python=3.10.12 ujson  # Specify the version here
+
+# Set environment variables for Python and conda paths
+!export PYTHONPATH=/usr/local/lib/python3.10/site-packages/
+!export CONDA_PREFIX=/usr/local/envs/myenv
+\end{lstlisting}
+
+\begin{lstlisting}
+
+# Python Version in New Virtual Environment (Compatible with ML-Agents)
+!python --version
+\end{lstlisting}
+
+\subsection{Установка зависимостей}\label{installing-the-dependencies}
+
+\begin{lstlisting}
+
+# Go inside the repository and install the package (can take 3min)
+%cd ml-agents
+pip3 install -e ./ml-agents-envs
+pip3 install -e ./ml-agents
+\end{lstlisting}
+
+\subsection{Загрузка и распаковка архива среды}\label{download-and-move-the-environment-zip-file-in-.trained-envs-executableslinux}
+
+\begin{itemize}
+\tightlist
+\item
+  Исполняемые файлы нашей среды находятся в ZIP-архиве.
+\item
+  Нужно скачать архив и поместить его в каталог \texttt{./trained-envs-executables/linux/}.
+\end{itemize}
+
+\begin{lstlisting}
+mkdir ./trained-envs-executables
+mkdir ./trained-envs-executables/linux
+\end{lstlisting}
+
+Мы загружаем файл Huggy.zip из \url{https://github.com/huggingface/Huggy} с помощью \texttt{wget}.
+
+\begin{lstlisting}
+wget "https://github.com/huggingface/Huggy/raw/main/Huggy.zip" -O ./trained-envs-executables/linux/Huggy.zip
+\end{lstlisting}
+
+\begin{lstlisting}
+%%capture
+unzip -d ./trained-envs-executables/linux/ ./trained-envs-executables/linux/Huggy.zip
+\end{lstlisting}
+
+Убедитесь, что файл доступен для запуска.
+
+\begin{lstlisting}
+chmod -R 755 ./trained-envs-executables/linux/Huggy
+\end{lstlisting}
+
+\subsection{Повторим устройство среды}\label{lets-recap-how-this-environment-works}
+
+\subsubsection{Пространство состояний: что воспринимает Huggy}\label{the-state-space-what-huggy-perceives.-1}
+
+Huggy не «видит» окружающую среду. Вместо этого мы предоставляем ему следующую информацию:
+
+\begin{itemize}
+\tightlist
+\item
+  Положение цели (палки)
+\item
+  Относительное положение Huggy и цели
+\item
+  Ориентация его лап.
+\end{itemize}
+
+На основе этой информации Huggy \textbf{может выбрать следующее действие для достижения своей цели}.
+
+\CourseFigure{huggy.jpg}{Huggy: собака-агент в среде Unity ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy.jpg}{[оригинал]}}
+
+\subsubsection{Пространство действий: как может двигаться Huggy}\label{the-action-space-what-moves-huggy-can-do}
+
+\CourseFigure{huggy-action.jpg}{Управление суставными двигателями лап Huggy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy-action.jpg}{[оригинал]}}
+
+\textbf{Лапы Huggy приводятся в движение суставными двигателями}. Чтобы добраться до цели, Huggy должен \textbf{научиться правильно вращать двигатели суставов каждой лапы и таким образом перемещаться}.
+
+\subsubsection{Функция вознаграждения}\label{the-reward-function-1}
+
+Функция вознаграждения спроектирована так, чтобы \textbf{Huggy достигал своей цели}: подбирал палку.
+
+Напомним, что одно из фундаментальных положений обучения с подкреплением --- \emph{гипотеза о вознаграждении}: цель можно описать как \textbf{максимизацию ожидаемого суммарного вознаграждения}.
+
+В нашем случае Huggy должен \textbf{приближаться к палке, не вращаясь слишком сильно}. Поэтому функция вознаграждения должна отражать именно эту цель.
+
+Наша функция вознаграждения:
+
+\CourseFigure{reward.jpg}{Функция вознаграждения для обучения Huggy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/reward.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Бонус за ориентацию}: мы \textbf{поощряем Huggy за приближение к цели}.
+\item
+  \emph{Штраф за время}: постоянный штраф на каждом шаге, который \textbf{побуждает его добраться до палки как можно быстрее}.
+\item
+  \emph{Штраф за вращение}: мы штрафуем Huggy, если \textbf{он слишком сильно вращается и слишком резко поворачивает}.
+\item
+  \emph{Вознаграждение за достижение цели}: поощряем Huggy за то, что \textbf{он достиг цели}.
+\end{itemize}
+
+\subsection{Проверка конфигурации Huggy}\label{check-the-huggy-config-file}
+
+\begin{itemize}
+\item
+  В ML-Agents \textbf{гиперпараметры обучения задаются в файлах config.yaml}.
+\item
+  В рамках этого ноутбука мы не будем изменять гиперпараметры. Но если вы захотите поэкспериментировать, Unity предоставляет \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Training-Configuration-File.md}{подробную документацию по каждому из них}.
+\item
+  Нужно создать конфигурационный файл для Huggy.
+\item
+  Перейдите в каталог \texttt{/content/ml-agents/config/ppo}.
+\item
+  Создайте новый файл \texttt{Huggy.yaml}.
+\item
+  Скопируйте и вставьте приведённое ниже содержимое.
+\end{itemize}
+
+\begin{lstlisting}
+behaviors:
+  Huggy:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 0.0003
+      beta: 0.005
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: linear
+    network_settings:
+      normalize: true
+      hidden_units: 512
+      num_layers: 3
+      vis_encode_type: simple
+    reward_signals:
+      extrinsic:
+        gamma: 0.995
+        strength: 1.0
+    checkpoint_interval: 200000
+    keep_checkpoints: 15
+    max_steps: 2e6
+    time_horizon: 1000
+    summary_freq: 50000
+\end{lstlisting}
+
+\begin{itemize}
+\item
+  Не забудьте сохранить файл!
+\item
+  \textbf{Если вы захотите изменить гиперпараметры}, в ноутбуке Google Colab можно открыть файл config.yaml по пути \texttt{/content/ml-agents/config/ppo/Huggy.yaml}.
+\end{itemize}
+
+Теперь всё готово к обучению агента.
+
+\subsection{Обучение агента}\label{train-our-agent}
+
+Чтобы обучить агента, достаточно \textbf{запустить mlagents-learn и указать исполняемый файл среды}.
+
+\CourseFigure{mllearn.png}{Структура команды mlagents-learn и её параметры \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/mllearn.png}{[оригинал]}}
+
+В ML-Agents обучение запускается отдельным скриптом. Мы задаём четыре параметра:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \texttt{mlagents-learn\ \textless{}config\textgreater{}}: путь к конфигурационному файлу с гиперпараметрами.
+\item
+  \texttt{-\/-env}: расположение исполняемого файла среды.
+\item
+  \texttt{-\/-run-id}: имя запуска обучения.
+\item
+  \texttt{-\/-no-graphics}: отключение графического отображения во время обучения.
+\end{enumerate}
+
+Обучите модель. Если выполнение прервётся, используйте флаг \texttt{-\/-resume} для продолжения обучения.
+
+\begin{quote}
+При первом использовании \texttt{-\/-resume} возникнет ошибка; повторно выполните блок, чтобы её обойти.
+\end{quote}
+
+Обучение займёт от 30 до 45 минут в зависимости от компьютера (не забудьте \textbf{настроить GPU}). Можно пока выпить заслуженную чашку кофе.
+
+\begin{lstlisting}
+mlagents-learn ./config/ppo/Huggy.yaml --env=./trained-envs-executables/linux/Huggy/Huggy --run-id="Huggy" --no-graphics
+\end{lstlisting}
+
+\subsection{Публикация агента на Hugging Face Hub}\label{push-the-agent-to-the-hub}
+
+\begin{itemize}
+\tightlist
+\item
+Мы обучили агента и теперь \textbf{готовы загрузить его на Hub, чтобы играть с Huggy в браузере}.
+\end{itemize}
+
+Чтобы поделиться своей моделью с сообществом, осталось выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если аккаунта ещё нет, зарегистрируйтесь на Hugging Face: \url{https://huggingface.co/join}.
+\item
+  Войдите в аккаунт и получите токен доступа на сайте Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Создайте новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правами записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена Hugging Face с правом записи \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Скопируйте токен.
+\item
+  Запустите следующую ячейку и вставьте токен.
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login
+
+notebook_login()
+\end{lstlisting}
+
+Если вы не используете Google Colab или Jupyter Notebook, вместо этого выполните команду \texttt{huggingface-cli\ login}.
+
+После этого достаточно запустить \texttt{mlagents-push-to-hf}.
+
+\CourseFigure{mlpush.png}{Структура команды mlagents-push-to-hf \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/mlpush.png}{[оригинал]}}
+
+Для этой команды указываются четыре параметра:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \texttt{-\/-run-id}: идентификатор запуска обучения.
+\item
+  \texttt{-\/-local-dir}: каталог, в котором сохранён агент, то есть \texttt{results/\textless{}run\_id\ name\textgreater{}}; в моём случае --- results/First Training.
+\item
+  \texttt{-\/-repo-id}: имя репозитория Hugging Face, который нужно создать или обновить. Оно имеет формат \texttt{\textless{}your\ huggingface\ username\textgreater{}/\textless{}the\ repo\ name\textgreater{}}. Если репозитория ещё нет, \textbf{он будет создан автоматически}.
+\item
+  \texttt{-\/-commit-message}: сообщение коммита, поскольку репозитории Hugging Face используют Git.
+\end{enumerate}
+
+\begin{lstlisting}
+mlagents-push-to-hf --run-id="HuggyTraining" --local-dir="./results/Huggy" --repo-id="ThomasSimonini/ppo-Huggy" --commit-message="Huggy"
+\end{lstlisting}
+
+Если всё прошло успешно, в конце процесса появится примерно такое сообщение (но с другим URL):
+
+\begin{lstlisting}
+Your model is pushed to the hub. You can view your model here: https://huggingface.co/ThomasSimonini/ppo-Huggy
+\end{lstlisting}
+
+Это ссылка на репозиторий вашей модели. В нём находятся карточка модели с инструкцией по использованию, логи TensorBoard и конфигурационный файл. \textbf{Поскольку это Git-репозиторий, вы можете создавать разные коммиты, обновлять модель повторными публикациями, открывать Pull Request и т. д.}
+
+\CourseFigure{modelcard.png}{Пример репозитория обученной модели Huggy и карточки Model Card \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/modelcard.png}{[оригинал]}}
+
+А теперь самое интересное: \textbf{можно играть с Huggy онлайн}.
+
+\subsection{Играем со своим Huggy}\label{play-with-your-huggy}
+
+Этот шаг самый простой:
+
+\begin{itemize}
+\item
+  Откройте игру Huggy в браузере: \url{https://huggingface.co/spaces/ThomasSimonini/Huggy}.
+\item
+  Нажмите кнопку Play with my Huggy model.
+\end{itemize}
+
+\CourseFigure{load-huggy.jpg}{Браузерная демонстрация Huggy: выбор модели из аккаунта \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/load-huggy.jpg}{[оригинал]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  На шаге 1 введите своё имя пользователя (регистр символов важен: например, мой ник --- ThomasSimonini, а не thomassimonini или ThOmasImoNInI) и нажмите кнопку поиска.
+\item
+  На шаге 2 выберите репозиторий своей модели.
+\item
+  На шаге 3 \textbf{выберите модель для воспроизведения}:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  У меня их несколько, поскольку мы сохраняли модель каждые 500000 шагов.
+\item
+  Но для получения самого свежего результата я выбираю \texttt{Huggy.onnx}.
+\end{itemize}
+
+Полезно \textbf{попробовать модели с разным числом шагов обучения, чтобы увидеть прогресс агента}.
+
+Поздравляем с завершением этого бонусного модуля!
+
+Теперь можно отдохнуть и поиграть со своим Huggy. И \textbf{не забудьте поделиться Huggy с друзьями}! Если будете рассказывать о нём в социальных сетях, \textbf{отметьте @huggingface и @simoninithomas}.
+
+\CourseFigure{huggy-cover.jpeg}{Huggy в игровой среде \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy-cover.jpeg}{[оригинал]}}
+
+\subsection{Продолжайте учиться и открывать новое}\label{keep-learning-stay-awesome}
+
+\section{Игра с Huggy}\label{play-with-huggy}
+
+Теперь, когда вы обучили Huggy и опубликовали его на Hub, \textbf{можно поиграть с ним}.
+
+Здесь всё просто:
+
+\begin{itemize}
+\tightlist
+\item
+  Откройте игру Huggy в браузере: \url{https://huggingface.co/spaces/ThomasSimonini/Huggy}.
+\item
+  Нажмите кнопку Play with my Huggy model.
+\end{itemize}
+
+\CourseFigure{load-huggy.jpg}{Браузерная демонстрация Huggy: выбор модели из аккаунта \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/load-huggy.jpg}{[оригинал]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  На шаге 1 выберите репозиторий модели --- её идентификатор (в моём случае ThomasSimonini/ppo-Huggy).
+\item
+  На шаге 2 \textbf{выберите модель для воспроизведения}:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  У меня их несколько, поскольку мы сохраняли модель каждые 500000 шагов.
+\item
+  Если нужна самая свежая версия, я выбираю Huggy.onnx.
+\end{itemize}
+
+Полезно \textbf{пробовать разные контрольные точки модели, чтобы наблюдать, как улучшается агент}.
+
+\section{Заключение}\label{conclusion}
+
+Поздравляем с завершением этого бонусного модуля!
+
+Теперь можно отдохнуть и поиграть со своим Huggy. И \textbf{не забудьте поделиться Huggy с друзьями}! Если будете рассказывать о нём в социальных сетях, \textbf{отметьте @huggingface и @simoninithomas}.
+
+\CourseFigure{huggy-cover.jpeg}{Huggy в игровой среде \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit-bonus1/huggy-cover.jpeg}{[оригинал]}}
+
+Наконец, нам очень важно \textbf{узнать ваше мнение о курсе и о том, как его улучшить}. Если у вас есть пожелания, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполните эту форму}.
+
+\subsubsection{Продолжайте учиться и открывать новое}\label{keep-learning-stay-awesome-1}
+
+\end{document}

@@ -1,0 +1,1040 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 5 (complete MDX study edition).
+% Compile with latexmk -pdf from the notes/ directory.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit5/}}
+% Common preamble is unchanged; override running headers locally.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Deep RL от Hugging Face \enspace/\enspace Модуль 5}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Unity ML-Agents}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 5: Unity ML-Agents}
+\author{Курс Hugging Face Deep RL\\\small Полное учебное издание на основе MDX в формате \LaTeX{}}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Исходный материал: курс Deep RL от Hugging Face.\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Введение в Unity ML-Agents}\label{an-introduction-to-unity-ml-agents}
+
+\CourseFigure{thumbnail.png}{Обложка модуля курса, посвящённого Unity ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/thumbnail.png}{[оригинал]}}
+
+Одна из сложностей обучения с подкреплением --- \textbf{создание сред}. К счастью, для этого можно использовать игровые движки. Такие движки, как \href{https://unity.com/}{Unity}, \href{https://godotengine.org/}{Godot} и \href{https://www.unrealengine.com/}{Unreal Engine}, --- программы для создания видеоигр. Они отлично подходят для разработки сред, поскольку предоставляют физические движки, средства двумерной и трёхмерной визуализации и многое другое.
+
+Разработчики одного из этих движков, \href{https://unity.com/}{Unity}, создали \href{https://github.com/Unity-Technologies/ml-agents}{Unity ML-Agents Toolkit} --- дополнение к Unity, которое позволяет \textbf{использовать игровой движок для создания сред и обучения агентов}. Именно так в первом бонусном модуле мы учили Huggy ловить палку!
+
+\CourseFigure{example-envs.png}{Примеры сред из документации ML-Agents (источник: документация ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/example-envs.png}{[оригинал]}}
+
+Unity ML-Agents Toolkit включает множество замечательных готовых сред: в них агенты играют в футбол, учатся ходить, перепрыгивают высокие стены и выполняют другие задачи.
+
+В этом модуле мы научимся использовать ML-Agents, но \textbf{не переживай, если не умеешь работать в игровом движке Unity}: для обучения агентов осваивать сам редактор не потребуется.
+
+Сегодня мы обучим двух агентов:
+
+\begin{itemize}
+\tightlist
+\item
+  Первый научится \textbf{бросать снежки в появляющиеся мишени}.
+\item
+  Второму понадобится \textbf{нажать кнопку, чтобы появилась пирамида, добраться до неё, опрокинуть её, а затем подойти к золотому кирпичу на вершине}. Для этого агент должен исследовать среду; ему поможет метод, называемый любопытством (curiosity).
+\end{itemize}
+
+\CourseFigure{envs.png}{Среды для обучения SnowballTarget и Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/envs.png}{[оригинал]}}
+
+После обучения \textbf{мы загрузим агентов в Hugging Face Hub}. Ты сможешь \textbf{посмотреть на их поведение прямо в браузере, не запуская редактор Unity}.
+
+Этот модуль \textbf{подготовит тебя к следующему испытанию: AI vs.~AI, в котором предстоит обучать агентов в мультиагентных средах и соревноваться с агентами других участников курса}.
+
+Звучит интересно? Тогда начнём!
+
+\section{Как устроен Unity ML-Agents?}\label{how-do-unity-ml-agents-work}
+
+Прежде чем обучать агента, разберёмся, \textbf{что такое ML-Agents и как он работает}.
+
+\subsection{Что такое Unity ML-Agents?}\label{what-is-unity-ml-agents}
+
+\href{https://github.com/Unity-Technologies/ml-agents}{Unity ML-Agents} --- набор инструментов для игрового движка Unity, который \textbf{позволяет создавать собственные среды либо использовать готовые среды для обучения агентов}.
+
+Его разрабатывает \href{https://unity.com/}{Unity Technologies} --- компания, создавшая один из самых известных игровых движков. На Unity, например, сделаны Firewatch, Cuphead и Cities: Skylines.
+
+\CourseFigure{firewatch.jpeg}{Игра Firewatch создана на движке Unity \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/firewatch.jpeg}{[оригинал]}}
+
+\subsection{Шесть основных компонентов}\label{the-six-components}
+
+В Unity ML-Agents есть шесть ключевых компонентов:
+
+\CourseFigure{mlagents-1.png}{Схема компонентов Unity ML-Agents (источник: документация Unity ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/mlagents-1.png}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Первый --- \emph{Learning Environment}, среда обучения. Она содержит \textbf{сцену Unity (среду) и её элементы}, например игровых персонажей.
+\item
+  Второй --- \emph{Python Low-level API}, \textbf{низкоуровневый интерфейс Python для взаимодействия со средой и управления ею}. Через этот API мы запускаем обучение.
+\item
+  Далее идёт \emph{External Communicator} --- компонент, который \textbf{связывает Learning Environment (на C\#) с низкоуровневым Python API (на Python)}.
+\item
+  \emph{Python trainers} --- \textbf{алгоритмы обучения с подкреплением, реализованные на PyTorch (PPO, SAC и др.)}.
+\item
+  \emph{Gym wrapper} --- обёртка, представляющая среду обучения с подкреплением через интерфейс Gym.
+\item
+  \emph{PettingZoo wrapper} --- обёртка на основе PettingZoo, мультиагентного аналога Gym.
+\end{itemize}
+
+\subsection{Внутри компонента обучения}\label{inside-the-learning-component}
+
+Внутри компонента обучения есть \textbf{два важных элемента}:
+
+\begin{itemize}
+\tightlist
+\item
+  Первый --- \emph{компонент агента}, действующего лица сцены. Мы будем \textbf{обучать агента, оптимизируя его политику} (она определяет, какое действие выбирать в каждом состоянии). В терминологии ML-Agents политика называется \emph{Brain} («мозг»).
+\item
+  Второй --- \emph{Academy} («академия»). Этот компонент \textbf{координирует агентов и процессы принятия ими решений}. Представь Academy в роли преподавателя, который обрабатывает запросы Python API.
+\end{itemize}
+
+Чтобы лучше понять её роль, вспомним цикл обучения с подкреплением. Его можно представить так:
+
+\CourseFigure{RL_process.jpg}{Цикл RL: состояние, действие, вознаграждение и следующее состояние; источник: Ричард Саттон и Эндрю Барто, «Обучение с подкреплением: введение» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/RL_process.jpg}{[оригинал]}}
+
+Представим агента, который учится играть в платформер. Цикл RL будет выглядеть следующим образом:
+
+\CourseFigure{RL_process_game.jpg}{Иллюстрация цикла обучения с подкреплением на примере игры \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/RL_process_game.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Агент получает от \textbf{среды состояние \(S_0\)} --- например, первый кадр игры.
+\item
+  На основе \textbf{состояния \(S_0\)} агент выбирает \textbf{действие \(A_0\)} --- в данном случае перемещается вправо.
+\item
+  Среда переходит в \textbf{новое состояние \(S_1\)} --- появляется следующий кадр.
+\item
+  Среда выдаёт агенту \textbf{вознаграждение \(R_1\)} --- он не погиб, поэтому получает \emph{положительное вознаграждение +1}.
+\end{itemize}
+
+Такой цикл RL порождает последовательность \textbf{«состояние --- действие --- вознаграждение --- следующее состояние»}. Цель агента --- \textbf{максимизировать ожидаемое суммарное вознаграждение}.
+
+Именно Academy будет \textbf{отдавать команды агентам и обеспечивать согласованность их работы}:
+
+\begin{itemize}
+\tightlist
+\item
+  Собирать наблюдения.
+\item
+  Выбирать действие в соответствии с политикой.
+\item
+  Выполнять действие.
+\item
+  Сбрасывать среду после достижения предельного числа шагов или завершения эпизода.
+\end{itemize}
+
+\CourseFigure{academy.png}{Компонент Academy в Unity ML-Agents и цикл принятия решений \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/academy.png}{[оригинал]}}
+
+Теперь мы понимаем, как устроен ML-Agents, и \textbf{готовы приступить к обучению агентов}.
+
+\section{Среда SnowballTarget}\label{the-snowballtarget-environment}
+
+\CourseFigure{snowballtarget_anim.png}{Среда обучения SnowballTarget (кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget.gif}{[оригинал]}}
+
+SnowballTarget --- среда, которую мы создали в Hugging Face, используя ресурсы \href{https://kaylousberg.com/}{Kay Lousberg}. В конце модуля есть необязательный раздел \textbf{для тех, кто хочет научиться работать в Unity и создавать собственные среды}.
+
+\subsection{Цель агента}\label{the-agents-goal}
+
+Первого агента, которого мы будем обучать, зовут медведь Жюльен (Julien). Его задача --- \textbf{попадать снежками в мишени}.
+
+Цель в этой среде --- чтобы Жюльен \textbf{поразил как можно больше мишеней за ограниченное время} (1000 временных шагов). Для этого ему необходимо \textbf{правильно расположиться относительно мишени и выстрелить}.
+
+Кроме того, чтобы избежать «спама снежками» (стрельбы на каждом временном шаге), \textbf{у Жюльена предусмотрен период восстановления}: после выстрела он должен подождать 0,5 секунды, прежде чем сможет стрелять снова.
+
+\CourseFigure{cooloffsystem_anim.png}{После броска снежка агент должен подождать 0,5 секунды до следующего выстрела \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/cooloffsystem.gif}{[оригинал]}}
+
+\subsection{Функция вознаграждения и проблема её проектирования}\label{the-reward-function-and-the-reward-engineering-problem}
+
+Функция вознаграждения здесь проста: \textbf{каждый раз, когда снежок агента попадает в мишень, среда выдаёт вознаграждение +1}. Поскольку цель агента --- максимизировать ожидаемую накопленную награду, \textbf{он будет стремиться поразить как можно больше мишеней}.
+
+\CourseFigure{snowballtarget_reward.png}{Механизм выдачи вознаграждения в SnowballTarget \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget_reward.png}{[оригинал]}}
+
+Можно было бы создать более сложную функцию вознаграждения, например добавить штраф, побуждающий агента действовать быстрее. Но при проектировании среды важно избегать \emph{проблемы чрезмерного конструирования вознаграждения}: слишком сложной функции, которая навязывает агенту желаемое поведение. Почему? Потому что \textbf{так можно упустить интересные стратегии, которые агент нашёл бы при более простой функции вознаграждения}.
+
+В коде это выглядит так:
+
+\CourseFigure{snowballtarget-reward-code.png}{Вычисление вознаграждения SnowballTarget в исходном коде \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget-reward-code.png}{[оригинал]}}
+
+\subsection{Пространство наблюдений}\label{the-observation-space}
+
+В качестве наблюдений здесь используется не обычное изображение (кадр), а \textbf{трассировка лучей (raycasts)}.
+
+Представь raycast как лазерный луч, с помощью которого можно определить, пересёк ли он какой-либо объект.
+
+\CourseFigure{raycasts.png}{Принцип трассировки лучей (источник: документация ML-Agents) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/raycasts.png}{[оригинал]}}
+
+В этой среде агент использует несколько наборов лучей:
+
+\CourseFigure{snowball_target_raycasts.png}{Наблюдения агента SnowballTarget, получаемые с помощью raycast \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowball_target_raycasts.png}{[оригинал]}}
+
+Помимо лучей, агент получает логическое наблюдение «можно ли сейчас стрелять».
+
+\CourseFigure{snowballtarget-obs-code.png}{Код сбора наблюдений в SnowballTarget \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget-obs-code.png}{[оригинал]}}
+
+\subsection{Пространство действий}\label{the-action-space}
+
+Пространство действий дискретное:
+
+\CourseFigure{snowballtarget_action_space.png}{Дискретное пространство действий SnowballTarget \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget_action_space.png}{[оригинал]}}
+
+\section{Среда Pyramids}\label{the-pyramid-environment}
+
+Цель обучения в этой среде --- научить агента \textbf{добираться до золотого кирпича на вершине пирамиды. Для этого нужно нажать кнопку, чтобы появилась пирамида, подойти к ней, опрокинуть её и добраться до верхнего золотого кирпича}.
+
+\CourseFigure{pyramids.png}{Среда обучения Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids.png}{[оригинал]}}
+
+\subsection{Функция вознаграждения}\label{the-reward-function}
+
+Функция вознаграждения устроена следующим образом:
+
+\CourseFigure{pyramids-reward.png}{Структура вознаграждения в среде Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-reward.png}{[оригинал]}}
+
+В коде она выглядит так:
+
+\CourseFigure{pyramids-reward-code.png}{Код вычисления вознаграждения в Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-reward-code.png}{[оригинал]}}
+
+Чтобы научить нового агента сначала искать кнопку, а затем пирамиду, которую требуется разрушить, мы объединим два вида вознаграждения:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Внешнее (extrinsic)} вознаграждение от среды (показано на рисунке выше).
+\item
+  \emph{Внутреннее (intrinsic)} вознаграждение, называемое \textbf{любопытством (curiosity)}. Оно будет \textbf{побуждать агента проявлять любопытство, то есть лучше исследовать окружающую среду}.
+\end{itemize}
+
+Если хочется подробнее узнать о любопытстве, в следующем необязательном разделе объясняются основы этого подхода.
+
+\subsection{Пространство наблюдений}\label{the-observation-space-1}
+
+В качестве наблюдений мы \textbf{используем 148 лучей; каждый из них способен обнаруживать объекты} (переключатель, кирпичи, золотой кирпич и стены).
+
+\CourseFigure{pyramids_raycasts.png}{Наблюдения агента Pyramids с помощью трассировки лучей \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids_raycasts.png}{[оригинал]}}
+
+Также используется \textbf{логическая переменная, показывающая состояние переключателя} (включён ли он и должна ли появиться пирамида), и вектор, \textbf{содержащий скорость агента}.
+
+\CourseFigure{pyramids-obs-code.png}{Код сбора наблюдений в Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-obs-code.png}{[оригинал]}}
+
+\subsection{Пространство действий}\label{the-action-space-1}
+
+Пространство действий \textbf{дискретное} и включает четыре возможных действия:
+
+\CourseFigure{pyramids-action.png}{Дискретное пространство действий Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-action.png}{[оригинал]}}
+
+\section{(Необязательно) Что такое любопытство в глубоком обучении с подкреплением?}\label{optional-what-is-curiosity-in-deep-reinforcement-learning}
+
+Это необязательное введение в метод любопытства (Curiosity). Чтобы узнать больше, можно прочитать две статьи с подробным математическим разбором:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-next-state-prediction-f7f4e2f592fa}{Обучение на основе любопытства через предсказание следующего состояния}
+\item
+  \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-random-network-distillation-488ffd8e5938}{Дистилляция случайной сети: новый подход к обучению на основе любопытства}
+\end{itemize}
+
+\subsection{Две главные проблемы современного RL}\label{two-major-problems-in-modern-rl}
+
+Чтобы понять, что такое любопытство, сначала рассмотрим две основные проблемы обучения с подкреплением.
+
+Первая --- \emph{проблема разреженных вознаграждений}: \textbf{большинство сигналов вознаграждения не несёт информации, поэтому равняется нулю}.
+
+Вспомним, что RL опирается на \emph{гипотезу вознаграждения}: любую цель можно описать как максимизацию вознаграждения. Поэтому вознаграждения служат обратной связью для агентов. \textbf{Если агент не получает такой обратной связи, он не может скорректировать представление о том, какие действия являются подходящими, а какие нет}.
+
+\CourseFigure{curiosity1.png}{Благодаря вознаграждению агент узнаёт, что действие в данном состоянии было хорошим \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity1.png}{[оригинал]}}
+
+Например, в \href{https://vizdoom.cs.put.edu.pl/}{ViZDoom} --- наборе сред на основе игры Doom --- в сценарии «DoomMyWayHome» агент получает вознаграждение \textbf{только за обнаружение бронежилета}. Однако жилет находится далеко от начальной точки, поэтому почти все награды будут нулевыми. Если агент не получает полезной обратной связи (плотных наград), поиск оптимальной политики займёт значительно больше времени: \textbf{агент может долго кружить на месте, так и не найдя цель}.
+
+\CourseFigure{curiosity2.png}{Разреженные вознаграждения в среде DoomMyWayHome \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity2.png}{[оригинал]}}
+
+Вторая большая проблема в том, что \textbf{внешнюю функцию вознаграждения создаёт человек: для каждой среды её нужно реализовывать вручную}. Но как масштабировать такой подход на большие и сложные среды?
+
+\subsection{Так что же такое любопытство?}\label{so-what-is-curiosity}
+
+Одно из решений состоит в том, чтобы \textbf{создать внутреннюю функцию вознаграждения, генерируемую самим агентом}. Тогда агент учится самостоятельно: одновременно выступает в роли ученика и источника собственной обратной связи.
+
+\textbf{Этот механизм внутреннего вознаграждения называется любопытством (Curiosity)}, потому что он побуждает агента исследовать новые и незнакомые состояния. Для этого агент получает большое вознаграждение при исследовании новых траекторий.
+
+Этот механизм вдохновлён человеческим поведением: \textbf{нам от природы свойственно стремиться исследовать окружающий мир и открывать что-то новое}.
+
+Внутреннее вознаграждение можно вычислять разными способами. Классический подход --- любопытство на основе предсказания следующего состояния --- заключается в том, чтобы измерять любопытство \textbf{как ошибку предсказания агентом следующего состояния по текущему состоянию и выбранному действию}.
+
+\CourseFigure{curiosity3.png}{Внутреннее вознаграждение за любопытство на основе ошибки предсказания следующего состояния \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity3.png}{[оригинал]}}
+
+Идея любопытства состоит в том, чтобы \textbf{побуждать агента выполнять действия, уменьшающие неопределённость в его способности предсказывать последствия собственных действий}. Неопределённость выше в областях, где агент провёл мало времени, или там, где динамика сложна.
+
+Если агент много раз посещает такие состояния, он начинает хорошо предсказывать следующее состояние (низкое любопытство). Если же он попадает в новое, неисследованное состояние, предсказание оказывается сложным (высокое любопытство).
+
+\CourseFigure{curiosity4.png}{Любопытство и исследование ранее неизвестных состояний \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/curiosity4.png}{[оригинал]}}
+
+Использование любопытства побуждает агента отдавать предпочтение переходам с большой ошибкой предсказания (обычно это малоизученные области либо области со сложной динамикой) и \textbf{тем самым лучше исследовать среду}.
+
+Существуют и \textbf{другие методы вычисления любопытства}. В ML-Agents используется более продвинутый подход --- любопытство через дистилляцию случайной сети (Random Network Distillation). Его подробности выходят за рамки этого руководства, но при желании можно прочитать \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-random-network-distillation-488ffd8e5938}{мою статью с детальным объяснением}.
+
+\subsection{Практическая часть}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit5/unit5.ipynb}{Официальный практический ноутбук модуля 5 (Google Colab)}
+
+\href{http://hf.co/join/discord}{Помощь сообщества}
+
+Мы узнали, что представляет собой ML-Agents и как он работает, а также изучили две среды, которые будем использовать. Теперь можно обучать агентов!
+
+\CourseFigure{envs.png}{Среды обучения SnowballTarget и Pyramids \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/envs.png}{[оригинал]}}
+
+Чтобы зачесть это практическое задание при получении сертификата, \textbf{достаточно загрузить обученные модели в Hub}. \textbf{Минимальных требований к результату нет}. Но для получения хороших результатов можно попробовать достичь следующих значений:
+
+\begin{itemize}
+\tightlist
+\item
+  Для \href{https://huggingface.co/spaces/unity/ML-Agents-Pyramids}{Pyramids}: среднее вознаграждение = 1,75.
+\item
+  Для \href{https://huggingface.co/spaces/ThomasSimonini/ML-Agents-SnowballTarget}{SnowballTarget}: среднее вознаграждение = 15 либо 30 поражённых мишеней за эпизод.
+\end{itemize}
+
+Подробнее о сертификации смотри в \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+\textbf{Чтобы начать практику, нажмите кнопку Open In Colab}:
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit5/unit5.ipynb}{Открыть в Google Colab}
+
+Мы настоятельно \textbf{рекомендуем студентам выполнять практические задания в Google Colab}, а не на собственном компьютере.
+
+Google Colab позволяет \textbf{сосредоточиться на изучении и экспериментах, не отвлекаясь на технические вопросы} установки и настройки сред.
+
+\subsection{Модуль 5: введение в ML-Agents}\label{unit-5-an-introduction-to-ml-agents}
+
+\CourseFigure{thumbnail.png}{Обложка модуля курса, посвящённого Unity ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/thumbnail.png}{[оригинал]}}
+
+В этом ноутбуке ты познакомишься с ML-Agents и обучишь двух агентов.
+
+\begin{itemize}
+\tightlist
+\item
+  Первый научится \textbf{бросать снежки в появляющиеся мишени}.
+\item
+  Второму нужно нажать кнопку для создания пирамиды, подойти к ней, опрокинуть её, \textbf{а затем добраться до золотого кирпича наверху}. Для этого придётся исследовать среду, используя метод любопытства (curiosity).
+\end{itemize}
+
+После этого ты сможешь \textbf{наблюдать за игрой агентов прямо в браузере}.
+
+Подробнее о сертификации смотри в \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+Вот пример того, \textbf{чему ты научишься к концу этого модуля}.
+
+\CourseFigure{pyramids_anim.png}{Демонстрация агента Pyramids (кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids.gif}{[оригинал]}}
+
+\CourseFigure{snowballtarget_anim.png}{Среда обучения SnowballTarget (кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget.gif}{[оригинал]}}
+
+\paragraph{Среды:}\label{environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Learning-Environment-Examples.md\#pyramids}{Pyramids}
+\item
+  SnowballTarget
+\end{itemize}
+
+\paragraph{Библиотека RL:}\label{rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/Unity-Technologies/ml-agents}{ML-Agents}
+\end{itemize}
+
+Мы постоянно улучшаем свои руководства, поэтому, \textbf{если заметишь в этом ноутбуке проблему}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создай обращение в репозитории GitHub}.
+
+\subsubsection{Цели этого ноутбука}\label{objectives-of-this-notebook}
+
+После прохождения ноутбука ты сможешь:
+
+\begin{itemize}
+\tightlist
+\item
+  Понимать принципы работы \textbf{ML-Agents} и библиотеки сред.
+\item
+  \textbf{Обучать агентов в средах Unity}.
+\end{itemize}
+
+\subsubsection{Предварительные знания}\label{prerequisites}
+
+Прежде чем приступить к ноутбуку, необходимо:
+
+\textbf{Изучить \href{https://huggingface.co/deep-rl-course/unit5/introduction}{устройство и принципы работы ML-Agents в теоретической части модуля 5}}.
+
+\subsection{Приступим к обучению агентов}\label{lets-train-our-agents}
+
+\subsubsection{Настройка GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Чтобы \textbf{ускорить обучение агента, воспользуемся GPU}. Для этого выбери в Colab \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Выбор типа среды выполнения в Google Colab \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Включение ускорителя GPU в Google Colab \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+\subsubsection{Клонирование репозитория}\label{clone-the-repository}
+
+\begin{itemize}
+\tightlist
+\item
+  Необходимо клонировать репозиторий, содержащий \textbf{ML-Agents}.
+\end{itemize}
+
+\begin{lstlisting}
+# Clone the repository (can take 3min)
+git clone --depth 1 https://github.com/Unity-Technologies/ml-agents
+\end{lstlisting}
+
+\subsubsection{Настройка виртуального окружения}\label{setup-the-virtual-environment}
+
+\begin{itemize}
+\item
+  Для корректной работы \textbf{ML-Agents} в Colab версия Python должна соответствовать требованиям библиотеки.
+\item
+  Поддерживаемые версии Python указаны параметром \texttt{python\_requires} в файлах \texttt{setup.py}, необходимых для установки \textbf{ML-Agents}. Они расположены здесь:
+
+  \begin{itemize}
+  \tightlist
+  \item
+  \texttt{/content/ml-agents/ml-agents/setup.py}
+  \item
+  \texttt{/content/ml-agents/ml-agents-envs/setup.py}
+  \end{itemize}
+\item
+  Текущая версия Python в Colab (её можно проверить командой \texttt{!python\ -\/-version}) не соответствует значению \texttt{python\_requires}, поэтому установка может незаметно завершиться с ошибкой. Позднее при выполнении команд могут появиться сообщения вроде:
+
+  \begin{itemize}
+  \tightlist
+  \item
+  \texttt{/bin/bash:\ line\ 1:\ mlagents-learn:\ command\ not\ found}
+  \item
+  \texttt{/bin/bash:\ line\ 1:\ mlagents-push-to-hf:\ command\ not\ found}
+  \end{itemize}
+\item
+  Чтобы решить проблему, создадим виртуальное окружение с версией Python, совместимой с библиотекой \textbf{ML-Agents}.
+\end{itemize}
+
+\texttt{Примечание:} \emph{Для совместимости в будущем всегда проверяй параметр \texttt{python\_requires} в установочных файлах и, если версия Python в Colab несовместима, выбирай в приведённом ниже сценарии максимальную поддерживаемую версию Python для виртуального окружения.}
+
+\begin{lstlisting}
+# Colab's Current Python Version (Incompatible with ML-Agents)
+!python --version
+\end{lstlisting}
+
+\begin{lstlisting}
+# Install virtualenv and create a virtual environment
+!pip install virtualenv
+!virtualenv myenv
+
+# Download and install Miniconda
+!wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+!chmod +x Miniconda3-latest-Linux-x86_64.sh
+!./Miniconda3-latest-Linux-x86_64.sh -b -f -p /usr/local
+
+# Activate Miniconda and install Python ver 3.10.12
+!source /usr/local/bin/activate
+!conda install -q -y --prefix /usr/local python=3.10.12 ujson  # Specify the version here
+
+# Set environment variables for Python and conda paths
+!export PYTHONPATH=/usr/local/lib/python3.10/site-packages/
+!export CONDA_PREFIX=/usr/local/envs/myenv
+\end{lstlisting}
+
+\begin{lstlisting}
+# Python Version in New Virtual Environment (Compatible with ML-Agents)
+!python --version
+\end{lstlisting}
+
+\subsubsection{Установка зависимостей}\label{installing-the-dependencies}
+
+\begin{lstlisting}
+# Go inside the repository and install the package (can take 3min)
+%cd ml-agents
+pip3 install -e ./ml-agents-envs
+pip3 install -e ./ml-agents
+\end{lstlisting}
+
+\subsubsection{SnowballTarget}\label{snowballtarget}
+
+Если нужно вспомнить, как устроена эта среда, смотри раздел \url{https://huggingface.co/deep-rl-course/unit5/snowball-target}
+
+\paragraph{Загрузка и размещение ZIP-архива среды в \texttt{./training-envs-executables/linux/}}\label{download-and-move-the-environment-zip-file-in-.training-envs-executableslinux}
+
+\begin{itemize}
+\tightlist
+\item
+  Исполняемый файл нашей среды находится внутри ZIP-архива.
+\item
+  Его нужно скачать и поместить в каталог \texttt{./training-envs-executables/linux/}.
+\item
+  Мы используем исполняемый файл для Linux, поскольку работаем в Colab, где установлена Ubuntu (Linux).
+\end{itemize}
+
+\begin{lstlisting}
+# Here, we create training-envs-executables and linux
+mkdir ./training-envs-executables
+mkdir ./training-envs-executables/linux
+\end{lstlisting}
+
+Файл SnowballTarget.zip скачивается из \url{https://github.com/huggingface/Snowball-Target} с помощью \texttt{wget}.
+
+\begin{lstlisting}
+wget "https://github.com/huggingface/Snowball-Target/raw/main/SnowballTarget.zip" -O ./training-envs-executables/linux/SnowballTarget.zip
+\end{lstlisting}
+
+Распакуем архив с исполняемым файлом.
+
+\begin{lstlisting}
+unzip -d ./training-envs-executables/linux/ ./training-envs-executables/linux/SnowballTarget.zip
+\end{lstlisting}
+
+Убедись, что полученный файл доступен для выполнения.
+
+\begin{lstlisting}
+chmod -R 755 ./training-envs-executables/linux/SnowballTarget
+\end{lstlisting}
+
+\paragraph{Создание конфигурационного файла SnowballTarget}\label{define-the-snowballtarget-config-file}
+
+\begin{itemize}
+\tightlist
+\item
+  В ML-Agents \textbf{гиперпараметры обучения задаются в файлах config.yaml}.
+\end{itemize}
+
+Гиперпараметров много. Чтобы лучше разобраться в каждом, прочитай \href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/Training-Configuration-File.md}{соответствующие пояснения в документации}.
+
+Нужно создать файл конфигурации \texttt{SnowballTarget.yaml} в каталоге \path{./content/ml-agents/config/ppo/}.
+
+Мы дадим предварительный вариант конфигурации, который можно скопировать в \texttt{SnowballTarget.yaml}, \textbf{но его необходимо адаптировать}.
+
+\begin{lstlisting}
+behaviors:
+  SnowballTarget:
+    trainer_type: ppo
+    summary_freq: 10000
+    keep_checkpoints: 10
+    checkpoint_interval: 50000
+    max_steps: 200000
+    time_horizon: 64
+    threaded: true
+    hyperparameters:
+      learning_rate: 0.0003
+      learning_rate_schedule: linear
+      batch_size: 128
+      buffer_size: 2048
+      beta: 0.005
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: false
+      hidden_units: 256
+      num_layers: 2
+      vis_encode_type: simple
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+\end{lstlisting}
+
+\CourseFigure{snowballfight_config1.png}{Конфигурация обучения PPO для SnowballTarget, часть 1 \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballfight_config1.png}{[оригинал]}}
+
+\CourseFigure{snowballfight_config2.png}{Конфигурация обучения PPO для SnowballTarget, часть 2 \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballfight_config2.png}{[оригинал]}}
+
+В качестве эксперимента попробуй изменить другие гиперпараметры. Unity предоставляет \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Training-Configuration-File.md}{подробную документацию с объяснением каждого из них}.
+
+Теперь, когда конфигурационный файл создан и ты понимаешь назначение большинства гиперпараметров, можно обучать агента.
+
+\paragraph{Обучение агента}\label{train-the-agent}
+
+Для обучения нужно \textbf{запустить mlagents-learn и указать исполняемый файл среды}.
+
+Задаются четыре параметра:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \texttt{mlagents-learn\ \textless{}config\textgreater{}} --- путь к файлу конфигурации с гиперпараметрами.
+\item
+  \texttt{-\/-env} --- путь к исполняемому файлу среды.
+\item
+  \texttt{-\/-run\_id} --- имя запуска обучения.
+\item
+  \texttt{-\/-no-graphics} --- не запускать визуализацию во время обучения.
+\end{enumerate}
+
+\CourseFigure{mlagentslearn.png}{Параметры команды обучения ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/mlagentslearn.png}{[оригинал]}}
+
+Обучи модель; если обучение прервётся, для продолжения используй флаг \texttt{-\/-resume}.
+
+\begin{quote}
+При первом использовании \texttt{-\/-resume} команда может завершиться ошибкой. Попробуй выполнить блок повторно, чтобы обойти её.
+\end{quote}
+
+Обучение займёт от 10 до 35 минут в зависимости от конфигурации. Можно сходить за кофе --- ты заслужил!
+
+\begin{lstlisting}
+mlagents-learn ./config/ppo/SnowballTarget.yaml --env=./training-envs-executables/linux/SnowballTarget/SnowballTarget --run-id="SnowballTarget1" --no-graphics
+\end{lstlisting}
+
+\paragraph{Публикация агента в Hugging Face Hub}\label{push-the-agent-to-the-hugging-face-hub}
+
+\begin{itemize}
+\tightlist
+\item
+  После обучения мы \textbf{готовы загрузить агента в Hub и посмотреть на его поведение через браузер}.
+\end{itemize}
+
+Чтобы поделиться моделью с сообществом, осталось выполнить три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Если аккаунта Hugging Face ещё нет, зарегистрируйся: \url{https://huggingface.co/join}
+\item
+  Войди в аккаунт и сохрани токен аутентификации, полученный на сайте Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Создай новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правом записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена доступа Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Скопируй токен.
+\item
+  Выполни ячейку ниже и вставь токен.
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login
+
+notebook_login()
+\end{lstlisting}
+
+Если ты не используешь Google Colab или Jupyter Notebook, вместо этого выполни команду \texttt{huggingface-cli\ login}.
+
+Затем нужно запустить \texttt{mlagents-push-to-hf}.
+
+Для этого задаём четыре параметра:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \texttt{-\/-run-id} --- имя запуска обучения.
+\item
+  \texttt{-\/-local-dir} --- расположение сохранённого агента. Модели сохраняются в \texttt{results/}; например, \texttt{results/First\ Training}.
+\item
+  \texttt{-\/-repo-id} --- имя репозитория Hugging Face, который требуется создать или обновить. Его формат всегда такой: \texttt{\textless{}your\ huggingface\ username\textgreater{}/\textless{}the\ repo\ name\textgreater{}}. Если репозиторий ещё не существует, \textbf{он будет создан автоматически}.
+\item
+  \texttt{-\/-commit-message} --- сообщение коммита, поскольку репозитории Hugging Face основаны на Git.
+\end{enumerate}
+
+\CourseFigure{mlagentspushtohub.png}{Команда публикации модели ML-Agents в Hub \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/mlagentspushtohub.png}{[оригинал]}}
+
+Например:
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id="SnowballTarget1" --local-dir="./results/SnowballTarget1" --repo-id="ThomasSimonini/ppo-SnowballTarget"  --commit-message="First Push"
+\end{lstlisting}
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id= # Add your run id  --local-dir= # Your local dir  --repo-id= # Your repo id  --commit-message= # Your commit message
+\end{lstlisting}
+
+Если всё прошло успешно, в конце появится такое сообщение (но с другим URL):
+
+\begin{lstlisting}
+Your model is pushed to the hub. You can view your model here: https://huggingface.co/ThomasSimonini/ppo-SnowballTarget
+\end{lstlisting}
+
+Это ссылка на твою модель. В репозитории есть карточка модели с инструкцией по её использованию, данные TensorBoard и конфигурационный файл. \textbf{Особенно удобно, что это Git-репозиторий: можно хранить разные коммиты, обновлять модель новыми публикациями и т.~д.}
+
+Но самое интересное впереди: \textbf{возможность посмотреть на работу агента онлайн}.
+
+\paragraph{Посмотрим, как играет агент}\label{watch-your-agent-playing}
+
+Этот шаг очень простой:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Открой \href{https://huggingface.co/spaces/ThomasSimonini/ML-Agents-SnowballTarget}{демонстрацию SnowballTarget в Hugging Face Spaces}.
+\item
+  Запусти игру и разверни её на весь экран кнопкой в правом нижнем углу.
+\end{enumerate}
+
+\CourseFigure{snowballtarget_load.png}{Загрузка обученного агента SnowballTarget в Hugging Face Space \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballtarget_load.png}{[оригинал]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  На первом шаге введи имя пользователя. Регистр важен: например, моё имя --- ThomasSimonini, а не thomassimonini или ThOmasImoNInI. Затем нажми кнопку поиска.
+\item
+  На втором шаге выбери репозиторий модели.
+\item
+  На третьем шаге \textbf{выбери, какую именно модель нужно воспроизвести}:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  У меня их несколько, поскольку мы сохраняли модель через каждые 500000 временных шагов.
+\item
+  Но поскольку я хочу посмотреть самую новую, выбираю \texttt{SnowballTarget.onnx}.
+\end{itemize}
+
+Полезно \textbf{попробовать модели с разных этапов обучения, чтобы увидеть прогресс агента}.
+
+И не стесняйся делиться лучшим результатом агента в Discord, в канале \texttt{\#rl-i-made-this}.
+
+Теперь попробуем более сложную среду под названием Pyramids.
+
+\subsubsection{Pyramids}\label{pyramids}
+
+\paragraph{Загрузка и размещение ZIP-архива среды в \texttt{./training-envs-executables/linux/}}\label{download-and-move-the-environment-zip-file-in-.training-envs-executableslinux-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Исполняемый файл среды упакован в ZIP-архив.
+\item
+  Скачай его и помести в каталог \texttt{./training-envs-executables/linux/}.
+\item
+  Используется исполняемый файл Linux, поскольку мы работаем в Colab, где установлена Ubuntu (Linux).
+\end{itemize}
+
+Файл Pyramids.zip скачиваем из \url{https://huggingface.co/spaces/unity/ML-Agents-Pyramids/resolve/main/Pyramids.zip} с помощью \texttt{wget}.
+
+\begin{lstlisting}
+wget "https://huggingface.co/spaces/unity/ML-Agents-Pyramids/resolve/main/Pyramids.zip" -O ./training-envs-executables/linux/Pyramids.zip
+\end{lstlisting}
+
+Распакуй его.
+
+\begin{lstlisting}
+unzip -d ./training-envs-executables/linux/ ./training-envs-executables/linux/Pyramids.zip
+\end{lstlisting}
+
+Убедись, что файл доступен для выполнения.
+
+\begin{lstlisting}
+chmod -R 755 ./training-envs-executables/linux/Pyramids/Pyramids
+\end{lstlisting}
+
+\paragraph{Изменение конфигурационного файла PyramidsRND}\label{modify-the-pyramidsrnd-config-file}
+
+\begin{itemize}
+\tightlist
+\item
+  В отличие от первой, созданной нами среды, \textbf{Pyramids разработана командой Unity}.
+\item
+  Поэтому конфигурационный файл PyramidsRND уже существует и находится здесь: \path{./content/ml-agents/config/ppo/PyramidsRND.yaml}.
+\item
+  Возможно, ты задаёшься вопросом, почему в названии PyramidsRND есть «RND». Эта аббревиатура означает \emph{Random Network Distillation} (дистилляция случайной сети) --- способ генерировать вознаграждение за любопытство. Если хочется узнать больше, мы подготовили \href{https://medium.com/data-from-the-trenches/curiosity-driven-learning-through-random-network-distillation-488ffd8e5938}{статью с подробным объяснением этого метода}.
+\end{itemize}
+
+Для этого обучения мы изменим один параметр:
+
+\begin{itemize}
+\tightlist
+\item
+  Общее число шагов обучения задано слишком большим: требуемого результата (среднее вознаграждение = 1,75) можно достичь всего за 1 млн шагов. Поэтому откроем \texttt{config/ppo/PyramidsRND.yaml} и \textbf{изменим \texttt{max\_steps} на 1000000}.
+\end{itemize}
+
+\CourseFigure{pyramids-config.png}{Конфигурация PyramidsRND и максимальное количество шагов обучения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/pyramids-config.png}{[оригинал]}}
+
+В качестве эксперимента попробуй изменить другие гиперпараметры. Unity предоставляет \href{https://github.com/Unity-Technologies/ml-agents/blob/main/docs/Training-Configuration-File.md}{хорошую документацию с объяснением каждого из них}.
+
+Теперь можно приступать к обучению агента.
+
+\paragraph{Обучение агента}\label{train-the-agent-1}
+
+Обучение займёт от 30 до 45 минут в зависимости от компьютера. Можешь сходить за кофе --- ты заслужил!
+
+\begin{lstlisting}
+mlagents-learn ./config/ppo/PyramidsRND.yaml --env=./training-envs-executables/linux/Pyramids/Pyramids --run-id="Pyramids Training" --no-graphics
+\end{lstlisting}
+
+\paragraph{Публикация агента в Hugging Face Hub}\label{push-the-agent-to-the-hugging-face-hub-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Теперь, когда агент обучен, мы \textbf{готовы загрузить его в Hub, чтобы затем посмотреть на его поведение в браузере}.
+\end{itemize}
+
+\begin{lstlisting}
+mlagents-push-to-hf  --run-id= # Add your run id  --local-dir= # Your local dir  --repo-id= # Your repo id  --commit-message= # Your commit message
+\end{lstlisting}
+
+\paragraph{Посмотрим, как играет агент}\label{watch-your-agent-playing-1}
+
+\url{https://huggingface.co/spaces/unity/ML-Agents-Pyramids}
+
+\paragraph{Бонус: почему бы не обучить агента в другой среде?}\label{bonus-why-not-train-on-another-environment}
+
+Теперь, когда ты умеешь обучать агента с помощью ML-Agents, \textbf{почему бы не попробовать другую среду?}
+
+В ML-Agents есть 17 разных сред, и мы также создаём собственные. Лучший способ научиться --- экспериментировать самостоятельно и получать удовольствие от процесса.
+
+\CourseFigure{0xERdThTRRM2k_U9f.png}{Пример другой среды Unity ML-Agents \protect\href{https://miro.medium.com/max/1400/0*xERdThTRRM2k_U9f.png}{[оригинал]}}
+
+Полный список доступных сейчас на Hugging Face сред находится здесь: \url{https://github.com/huggingface/ml-agents#the-environments}
+
+Демонстрации, в которых можно наблюдать за своими агентами: \url{https://huggingface.co/unity}
+
+На данный момент мы интегрировали:
+
+\begin{itemize}
+\tightlist
+\item
+  Демонстрацию \href{https://huggingface.co/spaces/unity/ML-Agents-Worm}{Worm}, в которой нужно научить \textbf{червя ползать}.
+\item
+  Демонстрацию \href{https://huggingface.co/spaces/unity/ML-Agents-Walker}{Walker}, в которой агент учится \textbf{идти к цели}.
+\end{itemize}
+
+На сегодня всё. Поздравляем с завершением практического занятия!
+
+Лучший способ учиться --- практиковаться и экспериментировать. Почему бы не попробовать ещё одну среду? В ML-Agents есть 18 разных сред, но можно создавать и собственные. Изучай документацию и получай удовольствие!
+
+Увидимся в модуле 6!
+
+\subsubsection{Продолжай учиться и не теряй энтузиазма}\label{keep-learning-stay-awesome}
+
+\section{Проверочный тест}\label{quiz}
+
+Лучший способ учиться и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{избежать иллюзии компетентности} --- \textbf{проверять себя}. Это поможет понять, \textbf{какие знания ещё нужно закрепить}.
+
+\subsubsection{Вопрос 1. Какие из следующих инструментов специально предназначены для разработки видеоигр?}\label{q1-which-of-the-following-tools-are-specifically-designed-for-video-games-development}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Unity (C\#)
+\item
+  \textbf{B.} Unreal Engine (C++)
+\item
+  \textbf{C.} Godot (GDScript, C++, C\#)
+\item
+  \textbf{D.} JetBrains Rider
+\item
+  \textbf{E.} JetBrains CLion
+\item
+  \textbf{F.} Microsoft Visual Studio и Visual Studio Code
+\end{itemize}
+
+\subsubsection{Вопрос 2. Какие из следующих утверждений об Unity ML-Agents верны?}\label{q2-what-of-the-following-statements-are-true-about-unity-ml-agents}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Объекты типа Scene в Unity можно использовать для создания сред обучения.
+\item
+  \textbf{B.} Unity ML-Agents позволяет создавать агентов и обучать их с помощью обучения с подкреплением.
+\item
+  \textbf{C.} Компонент \texttt{Communicator} отвечает за связь между средами и агентами Unity на C\# и серверной частью на Python.
+\item
+  \textbf{D.} В процессе обучения используются алгоритмы обучения с подкреплением, реализованные на PyTorch.
+\item
+  \textbf{E.} Unity ML-Agents поддерживает только Proximal Policy Optimization (PPO).
+\item
+  \textbf{F.} Включает обёртку Gym и её мультиагентный аналог \texttt{PettingZoo}.
+\end{itemize}
+
+\subsubsection{Вопрос 3. Вставь пропущенные буквы}\label{q3-fill-the-missing-letters}
+
+\begin{itemize}
+\tightlist
+\item
+  В Unity ML-Agents политика агента называется b \_ \_ \_ n.
+\item
+  Компонент, который координирует работу агентов, называется \_ c \_ \_ \_ m \_.
+\end{itemize}
+
+\subsubsection{Вопрос 4. Объясни своими словами, что такое \texttt{raycast}}\label{q4-define-with-your-own-words-what-is-a-raycast}
+
+\subsubsection{Вопрос 5. Чем отличается получение наблюдений через \texttt{frames} и через \texttt{raycasts}?}\label{q5-which-are-the-differences-between-capturing-the-environment-using-frames-or-raycasts}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} При использовании \texttt{frames} среда описывается всеми пикселями изображения, а при использовании \texttt{raycasts} передаётся только выборка этих пикселей.
+\item
+  \textbf{B.} При использовании \texttt{raycasts} среда описывается пикселями изображения, а при использовании \texttt{frames} создаётся (обычно) линия для проверки столкновений с объектами.
+\item
+  \textbf{C.} При использовании \texttt{frames} собираются все пиксели изображения, описывающего среду; при использовании \texttt{raycast} пиксели не нужны: обычно создаются лучи и проверяются их пересечения с объектами.
+\end{itemize}
+
+\subsubsection{Вопрос 6. Назови несколько входных переменных среды и агента, используемых для обучения в SnowballTarget или Pyramids}\label{q6-name-several-environment-and-agent-input-variables-used-to-train-the-agent-in-the-snowball-or-pyramid-environments}
+
+Поздравляем с прохождением теста! Если какой-то материал оказался забытым, вернись к соответствующим разделам и закрепи знания.
+
+\subsection{Ответы на тест и пояснения}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Решение вопроса 1}\label{q1-solution}
+
+\textbf{Правильные ответы:} A, B, C
+
+\textbf{A.} Unity (C\#)
+
+\textbf{B.} Unreal Engine (C++)
+
+\textbf{C.} Godot (GDScript, C++, C\#)
+
+\textbf{D.} JetBrains Rider. Пояснение: хотя эта IDE полезна благодаря поддержке C\# для Unity, она не предназначена специально для разработки видеоигр.
+
+\textbf{E.} JetBrains CLion. Пояснение: хотя эта IDE полезна благодаря поддержке C++ для Unreal Engine, она не специализирована на разработке видеоигр.
+
+\textbf{F.} Microsoft Visual Studio и Visual Studio Code. Пояснение: эти универсальные среды разработки поддерживают в том числе Unity и Unreal Engine, но не ориентированы исключительно на видеоигры.
+
+\subsubsection{Решение вопроса 2}\label{q2-solution}
+
+\textbf{Правильные ответы:} A, B, C, D, F
+
+\textbf{A.} Объекты типа Scene в Unity можно использовать для создания сред обучения.
+
+\textbf{B.} Unity ML-Agents позволяет создавать агентов и обучать их с помощью обучения с подкреплением.
+
+\textbf{C.} Компонент \texttt{Communicator} управляет обменом между средами и агентами Unity на C\# и серверной частью на Python.
+
+\textbf{D.} В процессе обучения используются алгоритмы обучения с подкреплением, реализованные на PyTorch.
+
+\textbf{E.} Unity ML-Agents поддерживает только Proximal Policy Optimization (PPO). Пояснение: нет, Unity ML-Agents поддерживает несколько семейств алгоритмов, включая Actor-Critic, который будет разобран в следующем разделе.
+
+\textbf{F.} Включает обёртку Gym и её мультиагентный аналог \texttt{PettingZoo}.
+
+\subsubsection{Решение вопроса 3}\label{q3-solution}
+
+\begin{itemize}
+\tightlist
+\item
+  b r a i n
+\item
+  a c a d e m y
+\end{itemize}
+
+\subsubsection{Решение вопроса 4}\label{q4-solution}
+
+Raycast --- это (в большинстве случаев) линейная проекция, подобная \texttt{лазерному лучу}, предназначенная для определения столкновений луча с объектами.
+
+\subsubsection{Решение вопроса 5}\label{q5-solution}
+
+\textbf{Правильный ответ:} C
+
+\textbf{A.} При использовании \texttt{frames} среда описывается всеми пикселями изображения, а при использовании \texttt{raycasts} передаётся лишь выборка этих пикселей. Пояснение: \texttt{raycasts} никак не связаны с пикселями. Это линейные проекции (лучи), которые проверяют пересечения с объектами.
+
+\textbf{B.} При использовании \texttt{raycasts} среда описывается пикселями изображения, а при использовании \texttt{frames} создаётся линия для проверки пересечений с объектами. Пояснение: всё наоборот --- \texttt{frames} собирают пиксели, а \texttt{raycasts} проверяют пересечения.
+
+\textbf{C.} При использовании \texttt{frames} мы собираем все пиксели изображения, определяющего среду. При использовании \texttt{raycast} пиксели не нужны: обычно создаются лучи и проверяется их пересечение с объектами.
+
+\subsubsection{Решение вопроса 6}\label{q6-solution}
+
+\begin{itemize}
+\tightlist
+\item
+  Пересечения испущенных агентом лучей с блоками, (невидимыми) стенами, камнями, мишенью, переключателями и другими объектами.
+\item
+  Обычные входные переменные, описывающие свойства агента, например его скорость.
+\item
+  Логические переменные, например положение переключателя (включён/выключен) в Pyramids или \texttt{can\ I\ shoot?} («могу ли я стрелять?») в SnowballTarget.
+\end{itemize}
+
+\section{Заключение}\label{conclusion}
+
+Поздравляем с завершением модуля! Ты только что обучил своих первых агентов с помощью ML-Agents и опубликовал их в Hub.
+
+Лучший способ учиться --- \textbf{практиковаться и экспериментировать}. Почему бы не попробовать другую среду? \href{https://github.com/Unity-Technologies/ml-agents/blob/develop/docs/Learning-Environment-Examples.md}{В ML-Agents есть 18 различных сред}.
+
+Например:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://singularite.itch.io/worm}{Worm}, где нужно научить червя ползать.
+\item
+  \href{https://singularite.itch.io/walker}{Walker}, где агент учится идти к цели.
+\end{itemize}
+
+Посмотри документацию, чтобы узнать, как обучать агентов в этих средах, а также найти список уже интегрированных в Hub сред ML-Agents: \url{https://github.com/huggingface/ml-agents#getting-started}
+
+\CourseFigure{envs-unity.jpeg}{Другие примеры сред Unity ML-Agents \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit5/envs-unity.jpeg}{[оригинал]}}
+
+В следующем модуле мы познакомимся с мультиагентными системами. Ты обучишь своих первых мультиагентных агентов, которые будут соревноваться с агентами других участников в футболе и битве снежками.
+
+\CourseFigure{snowballfight_anim.png}{Битва снежками между обученными агентами (кадр анимации) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit7/snowballfight.gif}{[оригинал]}}
+
+Наконец, нам очень хочется \textbf{узнать твоё мнение о курсе и о том, как его можно улучшить}. Если есть идеи или замечания, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполни эту форму}.
+
+\subsubsection{Продолжай учиться и не теряй энтузиазма}\label{keep-learning-stay-awesome-1}
+
+\enlargethispage{3\baselineskip}
+\begingroup\small\setlength{\parskip}{0.15em}\setlist[itemize]{topsep=0.18em,itemsep=0.05em}
+\section{Бонус: создание собственных сред с Unity и ML-Agents}\label{bonus-learn-to-create-your-own-environments-with-unity-and-mlagents}
+
+\textbf{С помощью Unity и ML-Agents можно создавать собственные среды обучения с подкреплением}. На первый взгляд игровой движок Unity может показаться сложным, но следующие шаги помогут освоить его постепенно.
+
+\subsection{Шаг 1. Научись пользоваться Unity}\label{step-1-know-how-to-use-unity}
+
+\begin{itemize}
+\tightlist
+\item
+  Лучший способ освоить Unity --- пройти курс \href{https://learn.unity.com/course/create-with-code}{«Create with Code»}. Это серия видеоуроков для начинающих, в которой \textbf{ты создашь пять небольших игр на Unity}.
+\end{itemize}
+
+\subsection{Шаг 2. Создай простейшую среду по руководству}\label{step-2-create-the-simplest-environment-with-this-tutorial}
+
+\begin{itemize}
+\tightlist
+\item
+  Когда освоишь Unity, сможешь создать \href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/Learning-Environment-Create-New.md}{свою первую простую RL-среду с помощью этого руководства}.
+\end{itemize}
+
+\subsection{Шаг 3. Усложняй и совершенствуй среды}\label{step-3-iterate-and-create-nice-environments}
+
+\begin{itemize}
+\tightlist
+\item
+  После создания первой простой среды можно переходить к более сложным, используя \href{https://github.com/Unity-Technologies/ml-agents/blob/release_20_docs/docs/}{документацию ML-Agents, особенно разделы Designing Agents и Agent}.
+\item
+  Кроме того, можно пройти бесплатный курс \href{https://learn.unity.com/course/ml-agents-hummingbirds}{«Создание среды с колибри»} от \href{https://twitter.com/aktwelve}{Адама Келли (Adam Kelly)}.
+\end{itemize}
+
+Удачи и приятных экспериментов! Если создашь собственную среду, обязательно поделись ею в Discord-канале \texttt{\#rl-i-made-this}.
+
+\endgroup
+\end{document}

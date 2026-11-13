@@ -1,0 +1,1794 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 4 (complete MDX study edition).
+% Compiled with latexmk -pdf from the notes/ directory; uses existing preamble.tex.
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\graphicspath{{../assets/unit4/}}
+% Reuse existing shared preamble, override unit-specific running headers.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}HF Deep RL Course \enspace/\enspace Unit 4}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Policy Gradient}
+\title{\textbf{Deep Reinforcement Learning}\\[0.35em]\large Unit 4: Policy Gradient and REINFORCE}
+\author{Hugging Face Deep RL Course\\\small Complete MDX-to-\LaTeX{} study edition}
+\date{}
+\begin{document}
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Source: Hugging Face Deep RL Course (original English text).\end{center}
+\begingroup\small\setlength{\parskip}{0pt}\tableofcontents\endgroup
+\vspace{0.5em}
+\clearpage
+
+\section{Introduction}\label{introduction}
+
+\CourseFigure{thumbnail.png}{Unit 4: Policy Gradient and REINFORCE course cover \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/thumbnail.png}{[original figure]}}
+
+In the last unit, we learned about Deep Q-Learning. In this value-based deep reinforcement learning algorithm, we \textbf{used a deep neural network to approximate the different Q-values for each possible action at a state.}
+
+Since the beginning of the course, we have only studied value-based methods, \textbf{where we estimate a value function as an intermediate step towards finding an optimal policy.}
+
+\CourseFigure{link-value-policy.jpg}{Relation between state-action value estimates and policy selection \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/link-value-policy.jpg}{[original figure]}}
+
+In value-based methods, the policy \textbf{\(\pi\) only exists because of the action value estimates since the policy is just a function} (for instance, greedy-policy) that will select the action with the highest value given a state.
+
+With policy-based methods, we want to optimize the policy directly \textbf{without having an intermediate step of learning a value function.}
+
+So today, \textbf{we'll learn about policy-based methods and study a subset of these methods called policy gradient}. Then we'll implement our first policy gradient algorithm called Monte Carlo \textbf{Reinforce} from scratch using PyTorch. Then, we'll test its robustness using the CartPole-v1 and PixelCopter environments.
+
+You'll then be able to iterate and improve this implementation for more advanced environments.
+
+\CourseFigure{envs.png}{CartPole and PixelCopter example environments (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/envs.gif}{[original animation]}}
+
+Let's get started!
+
+\section{What are the policy-based methods?}\label{what-are-the-policy-based-methods}
+
+The main goal of Reinforcement learning is to \textbf{find the optimal policy \(\pi^{*}\) that will maximize the expected cumulative reward}. Because Reinforcement Learning is based on the \emph{reward hypothesis}: \textbf{all goals can be described as the maximization of the expected cumulative reward.}
+
+For instance, in a soccer game (where you're going to train the agents in two units), the goal is to win the game. We can describe this goal in reinforcement learning as \textbf{maximizing the number of goals scored} (when the ball crosses the goal line) into your opponent's soccer goals. And \textbf{minimizing the number of goals in your soccer goals}.
+
+\CourseFigure{soccer.jpg}{Soccer example for the reward-maximization objective \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/soccer.jpg}{[original figure]}}
+
+\subsection{Value-based, Policy-based, and Actor-critic methods}\label{value-based-policy-based-and-actor-critic-methods}
+
+In the first unit, we saw two methods to find (or, most of the time, approximate) this optimal policy \(\pi^{*}\).
+
+\begin{itemize}
+\tightlist
+\item
+  In \emph{value-based methods}, we learn a value function.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    The idea is that an optimal value function leads to an optimal policy \(\pi^{*}\).
+  \item
+    Our objective is to \textbf{minimize the loss between the predicted and target value} to approximate the true action-value function.
+  \item
+    We have a policy, but it's implicit since it \textbf{is generated directly from the value function}. For instance, in Q-Learning, we used an (epsilon-)greedy policy.
+  \end{itemize}
+\item
+  On the other hand, in \emph{policy-based methods}, we directly learn to approximate \(\pi^{*}\) without having to learn a value function.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    The idea is \textbf{to parameterize the policy}. For instance, using a neural network \(\pi_\theta\), this policy will output a probability distribution over actions (stochastic policy).
+  \item
+  \end{itemize}
+\end{itemize}
+
+\CourseFigure{stochastic_policy.png}{Stochastic policy produces a distribution over actions \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/stochastic_policy.png}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Our objective then is \textbf{to maximize the performance of the parameterized policy using gradient ascent}.
+\item
+  To do that, we control the parameter \(\theta\) that will affect the distribution of actions over a state.
+\end{itemize}
+
+\CourseFigure{policy_based.png}{Policy network mapping states to action probabilities \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_based.png}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Next time, we'll study the \emph{actor-critic} method, which is a combination of value-based and policy-based methods.
+\end{itemize}
+
+Consequently, thanks to policy-based methods, we can directly optimize our policy \(\pi_\theta\) to output a probability distribution over actions \(\pi_\theta(a|s)\) that leads to the best cumulative return. To do that, we define an objective function \(J(\theta)\), that is, the expected cumulative reward, and we \textbf{want to find the value \(\theta\) that maximizes this objective function}.
+
+\subsection{The difference between policy-based and policy-gradient methods}\label{the-difference-between-policy-based-and-policy-gradient-methods}
+
+Policy-gradient methods, what we're going to study in this unit, is a subclass of policy-based methods. In policy-based methods, the optimization is most of the time \emph{on-policy} since for each update, we only use data (trajectories) collected \textbf{by our most recent version of} \(\pi_\theta\).
+
+The difference between these two methods \textbf{lies on how we optimize the parameter} \(\theta\):
+
+\begin{itemize}
+\tightlist
+\item
+  In \emph{policy-based methods}, we search directly for the optimal policy. We can optimize the parameter \(\theta\) \textbf{indirectly} by maximizing the local approximation of the objective function with techniques like hill climbing, simulated annealing, or evolution strategies.
+\item
+  In \emph{policy-gradient methods}, because it is a subclass of the policy-based methods, we search directly for the optimal policy. But we optimize the parameter \(\theta\) \textbf{directly} by performing the gradient ascent on the performance of the objective function \(J(\theta)\).
+\end{itemize}
+
+Before diving more into how policy-gradient methods work (the objective function, policy gradient theorem, gradient ascent, etc.), let's study the advantages and disadvantages of policy-based methods.
+
+\section{The advantages and disadvantages of policy-gradient methods}\label{the-advantages-and-disadvantages-of-policy-gradient-methods}
+
+At this point, you might ask, ``but Deep Q-Learning is excellent! Why use policy-gradient methods?''. To answer this question, let's study the \textbf{advantages and disadvantages of policy-gradient methods}.
+
+\subsection{Advantages}\label{advantages}
+
+There are multiple advantages over value-based methods. Let's see some of them:
+
+\subsubsection{The simplicity of integration}\label{the-simplicity-of-integration}
+
+We can estimate the policy directly without storing additional data (action values).
+
+\subsubsection{Policy-gradient methods can learn a stochastic policy}\label{policy-gradient-methods-can-learn-a-stochastic-policy}
+
+Policy-gradient methods can \textbf{learn a stochastic policy while value functions can't}.
+
+This has two consequences:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  We \textbf{don't need to implement an exploration/exploitation trade-off by hand}. Since we output a probability distribution over actions, the agent explores \textbf{the state space without always taking the same trajectory.}
+\item
+  We also get rid of the problem of \textbf{perceptual aliasing}. Perceptual aliasing is when two states seem (or are) the same but need different actions.
+\end{enumerate}
+
+Let's take an example: we have an intelligent vacuum cleaner whose goal is to suck the dust and avoid killing the hamsters.
+
+\CourseFigure{hamster1.jpg}{Stochastic policies: first illustration \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/hamster1.jpg}{[original figure]}}
+
+Our vacuum cleaner can only perceive where the walls are.
+
+The problem is that the \textbf{two red (colored) states are aliased states because the agent perceives an upper and lower wall for each}.
+
+\CourseFigure{hamster2.jpg}{Stochastic policies: second illustration \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/hamster2.jpg}{[original figure]}}
+
+Under a deterministic policy, the policy will either always move right when in a red state or always move left. \textbf{Either case will cause our agent to get stuck and never suck the dust}.
+
+Under a value-based Reinforcement learning algorithm, we learn a \textbf{quasi-deterministic policy} (``greedy epsilon strategy''). Consequently, our agent can \textbf{spend a lot of time before finding the dust}.
+
+On the other hand, an optimal stochastic policy \textbf{will randomly move left or right in red (colored) states}. Consequently, \textbf{it will not be stuck and will reach the goal state with a high probability}.
+
+\CourseFigure{hamster3.jpg}{Stochastic policies: third illustration \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/hamster3.jpg}{[original figure]}}
+
+\subsubsection{Policy-gradient methods are more effective in high-dimensional action spaces and continuous actions spaces}\label{policy-gradient-methods-are-more-effective-in-high-dimensional-action-spaces-and-continuous-actions-spaces}
+
+The problem with Deep Q-learning is that their \textbf{predictions assign a score (maximum expected future reward) for each possible action}, at each time step, given the current state.
+
+But what if we have an infinite possibility of actions?
+
+For instance, with a self-driving car, at each state, you can have a (near) infinite choice of actions (turning the wheel at 15°, 17.2°, 19,4°, honking, etc.). \textbf{We'll need to output a Q-value for each possible action}! And \textbf{taking the max action of a continuous output is an optimization problem itself}!
+
+Instead, with policy-gradient methods, we output a \textbf{probability distribution over actions.}
+
+\subsubsection{Policy-gradient methods have better convergence properties}\label{policy-gradient-methods-have-better-convergence-properties}
+
+In value-based methods, we use an aggressive operator to \textbf{change the value function: we take the maximum over Q-estimates}. Consequently, the action probabilities may change dramatically for an arbitrarily small change in the estimated action values if that change results in a different action having the maximal value.
+
+For instance, if during the training, the best action was left (with a Q-value of 0.22) and the training step after it's right (since the right Q-value becomes 0.23), we dramatically changed the policy since now the policy will take most of the time right instead of left.
+
+On the other hand, in policy-gradient methods, stochastic policy action preferences (probability of taking action) \textbf{change smoothly over time}.
+
+\subsection{Disadvantages}\label{disadvantages}
+
+Naturally, policy-gradient methods also have some disadvantages:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Frequently, policy-gradient methods converges to a local maximum instead of a global optimum.}
+\item
+  Policy-gradient goes slower, \textbf{step by step: it can take longer to train (inefficient).}
+\item
+  Policy-gradient can have high variance. We'll see in the actor-critic unit why, and how we can solve this problem.
+\end{itemize}
+
+If you want to go deeper into the advantages and disadvantages of policy-gradient methods, \href{https://youtu.be/y3oqOjHilio}{you can check this video}.
+
+\section{Diving deeper into policy-gradient methods}\label{diving-deeper-into-policy-gradient-methods}
+
+\subsection{Getting the big picture}\label{getting-the-big-picture}
+
+We just learned that policy-gradient methods aim to find parameters \(\theta\) that \textbf{maximize the expected return}.
+
+The idea is that we have a \emph{parameterized stochastic policy}. In our case, a neural network outputs a probability distribution over actions. The probability of taking each action is also called the \emph{action preference}.
+
+If we take the example of CartPole-v1:
+
+\begin{itemize}
+\tightlist
+\item
+  As input, we have a state.
+\item
+  As output, we have a probability distribution over actions at that state.
+\end{itemize}
+
+\CourseFigure{policy_based.png}{Policy network mapping states to action probabilities \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_based.png}{[original figure]}}
+
+Our goal with policy-gradient is to \textbf{control the probability distribution of actions} by tuning the policy such that \textbf{good actions (that maximize the return) are sampled more frequently in the future.} Each time the agent interacts with the environment, we tweak the parameters such that good actions will be sampled more likely in the future.
+
+But \textbf{how are we going to optimize the weights using the expected return}?
+
+The idea is that we're going to \textbf{let the agent interact during an episode}. And if we win the episode, we consider that each action taken was good and must be more sampled in the future since they lead to win.
+
+So for each state-action pair, we want to increase the \(P(a|s)\): the probability of taking that action at that state. Or decrease if we lost.
+
+The Policy-gradient algorithm (simplified) looks like this:
+
+\CourseFigure{pg_bigpicture.jpg}{Overview of the policy-gradient update process \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/pg_bigpicture.jpg}{[original figure]}}
+
+Now that we got the big picture, let's dive deeper into policy-gradient methods.
+
+\subsection{Diving deeper into policy-gradient methods}\label{diving-deeper-into-policy-gradient-methods-1}
+
+We have our stochastic policy \(\pi\) which has a parameter \(\theta\). This \(\pi\), given a state, \textbf{outputs a probability distribution of actions}.
+
+\CourseFigure{stochastic_policy.png}{Stochastic policy produces a distribution over actions \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/stochastic_policy.png}{[original figure]}}
+
+Where \(\pi_\theta(a_t|s_t)\) is the probability of the agent selecting action \(a_t\) from state \(s_t\) given our policy.
+
+\textbf{But how do we know if our policy is good?} We need to have a way to measure it. To know that, we define a score/objective function called \(J(\theta)\).
+
+\subsubsection{The objective function}\label{the-objective-function}
+
+The \emph{objective function} gives us the \textbf{performance of the agent} given a trajectory (state action sequence without considering reward (contrary to an episode)), and it outputs the \emph{expected cumulative reward}.
+
+\CourseFigure{objective.jpg}{Policy-gradient objective function \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/objective.jpg}{[original figure]}}
+
+Let's give some more details on this formula:
+
+\begin{itemize}
+\tightlist
+\item
+  The \emph{expected return} (also called expected cumulative reward), is the weighted average (where the weights are given by \(P(\tau;\theta)\) of all possible values that the return \(R(\tau)\) can take).
+\end{itemize}
+
+\CourseFigure{expected_reward.png}{Expected return as the optimization objective \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/expected_reward.png}{[original figure]}}
+
+\begin{itemize}
+\item
+  \(R(\tau)\) : Return from an arbitrary trajectory. To take this quantity and use it to calculate the expected return, we need to multiply it by the probability of each possible trajectory.
+\item
+  \(P(\tau;\theta)\) : Probability of each possible trajectory \(\tau\) (that probability depends on \(\theta\) since it defines the policy that it uses to select the actions of the trajectory which has an impact of the states visited).
+\end{itemize}
+
+\CourseFigure{probability.png}{Probability of a trajectory under a parameterized policy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/probability.png}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \(J(\theta)\) : Expected return, we calculate it by summing for all trajectories, the probability of taking that trajectory given \(\theta\) multiplied by the return of this trajectory.
+\end{itemize}
+
+Our objective then is to maximize the expected cumulative reward by finding the \(\theta\) that will output the best action probability distributions:
+
+\CourseFigure{max_objective.png}{Maximizing the objective function over policy parameters \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/max_objective.png}{[original figure]}}
+
+\subsection{Gradient Ascent and the Policy-gradient Theorem}\label{gradient-ascent-and-the-policy-gradient-theorem}
+
+Policy-gradient is an optimization problem: we want to find the values of \(\theta\) that maximize our objective function \(J(\theta)\), so we need to use \textbf{gradient-ascent}. It's the inverse of \emph{gradient-descent} since it gives the direction of the steepest increase of \(J(\theta)\).
+
+(If you need a refresher on the difference between gradient descent and gradient ascent \href{https://www.baeldung.com/cs/gradient-descent-vs-ascent}{check this} and \href{https://stats.stackexchange.com/questions/258721/gradient-ascent-vs-gradient-descent-in-logistic-regression}{this}).
+
+Our update step for gradient-ascent is:
+
+\(\theta \leftarrow \theta + \alpha *  \nabla_\theta J(\theta)\)
+
+We can repeatedly apply this update in the hopes that \(\theta\) converges to the value that maximizes \(J(\theta)\).
+
+However, there are two problems with computing the derivative of \(J(\theta)\):
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  We can't calculate the true gradient of the objective function since it requires calculating the probability of each possible trajectory, which is computationally super expensive. So we want to \textbf{calculate a gradient estimation with a sample-based estimate (collect some trajectories)}.
+\item
+  We have another problem that I explain in the next optional section. To differentiate this objective function, we need to differentiate the state distribution, called the Markov Decision Process dynamics. This is attached to the environment. It gives us the probability of the environment going into the next state, given the current state and the action taken by the agent. The problem is that we can't differentiate it because we might not know about it.
+\end{enumerate}
+
+\CourseFigure{probability.png}{Probability of a trajectory under a parameterized policy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/probability.png}{[original figure]}}
+
+Fortunately we're going to use a solution called the Policy Gradient Theorem that will help us to reformulate the objective function into a differentiable function that does not involve the differentiation of the state distribution.
+
+\CourseFigure{policy_gradient_theorem.png}{The policy-gradient theorem \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_theorem.png}{[original figure]}}
+
+If you want to understand how we derive this formula for approximating the gradient, check out the next (optional) section.
+
+\subsection{The Reinforce algorithm (Monte Carlo Reinforce)}\label{the-reinforce-algorithm-monte-carlo-reinforce}
+
+The Reinforce algorithm, also called Monte-Carlo policy-gradient, is a policy-gradient algorithm that \textbf{uses an estimated return from an entire episode to update the policy parameter} \(\theta\):
+
+In a loop:
+
+\begin{itemize}
+\tightlist
+\item
+  Use the policy \(\pi_\theta\) to collect an episode \(\tau\)
+\item
+  Use the episode to estimate the gradient \(\hat{g} = \nabla_\theta J(\theta)\)
+\end{itemize}
+
+\CourseFigure{policy_gradient_one.png}{REINFORCE update with a single sampled trajectory \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_one.png}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Update the weights of the policy: \(\theta \leftarrow \theta + \alpha \hat{g}\)
+\end{itemize}
+
+We can interpret this update as follows:
+
+\begin{itemize}
+\item
+  \(\nabla_\theta log \pi_\theta(a_t|s_t)\) is the direction of \textbf{steepest increase of the (log) probability} of selecting action \(a_t\) from state \(s_t\). This tells us \textbf{how we should change the weights of policy} if we want to increase/decrease the log probability of selecting action \(a_t\) at state \(s_t\).
+\item
+  \(R(\tau)\): is the scoring function:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    If the return is high, it will \textbf{push up the probabilities} of the (state, action) combinations.
+  \item
+    Otherwise, if the return is low, it will \textbf{push down the probabilities} of the (state, action) combinations.
+  \end{itemize}
+\end{itemize}
+
+We can also \textbf{collect multiple episodes (trajectories)} to estimate the gradient:
+
+\CourseFigure{policy_gradient_multiple.png}{REINFORCE update averaged over multiple trajectories \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_multiple.png}{[original figure]}}
+
+\section{(Optional) the Policy Gradient Theorem}\label{optional-the-policy-gradient-theorem}
+
+In this optional section where we're \textbf{going to study how we differentiate the objective function that we will use to approximate the policy gradient}.
+
+Let's first recap our different formulas:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  The Objective function
+\end{enumerate}
+
+\CourseFigure{expected_reward.png}{Expected return as the optimization objective \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/expected_reward.png}{[original figure]}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  The probability of a trajectory (given that action comes from \(\pi_\theta\)):
+\end{enumerate}
+
+\CourseFigure{probability.png}{Probability of a trajectory under a parameterized policy \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/probability.png}{[original figure]}}
+
+So we have:
+
+\(\nabla_\theta J(\theta) =  \nabla_\theta \sum_{\tau}P(\tau;\theta)R(\tau)\)
+
+We can rewrite the gradient of the sum as the sum of the gradient:
+
+\(=  \sum_{\tau} \nabla_\theta (P(\tau;\theta)R(\tau)) = \sum_{\tau} \nabla_\theta P(\tau;\theta)R(\tau)\) as \(R(\tau)\) is not dependent on \(\theta\)
+
+We then multiply every term in the sum by \(\frac{P(\tau;\theta)}{P(\tau;\theta)}\)(which is possible since it's = 1)
+
+\(= \sum_{\tau} \frac{P(\tau;\theta)}{P(\tau;\theta)}\nabla_\theta P(\tau;\theta)R(\tau)\)
+
+We can simplify further this since \(\frac{P(\tau;\theta)}{P(\tau;\theta)}\nabla_\theta P(\tau;\theta) =  P(\tau;\theta)\frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}\).
+
+Thus we can rewrite the sum as
+
+\(P(\tau;\theta)\frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}= \sum_{\tau} P(\tau;\theta) \frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}R(\tau)\)
+
+We can then use the \emph{derivative log trick} (also called \emph{likelihood ratio trick} or \emph{REINFORCE trick}), a simple rule in calculus that implies that \(\nabla_x log f(x) = \frac{\nabla_x f(x)}{f(x)}\)
+
+So given we have \(\frac{\nabla_\theta P(\tau;\theta)}{P(\tau;\theta)}\) we transform it as \(\nabla_\theta log P(\tau|\theta)\)
+
+So this is our likelihood policy gradient:
+
+\(\nabla_\theta J(\theta) = \sum_{\tau} P(\tau;\theta)  \nabla_\theta log P(\tau;\theta) R(\tau)\)
+
+Thanks for this new formula, we can estimate the gradient using trajectory samples (we can approximate the likelihood ratio policy gradient with sample-based estimate if you prefer).
+
+\(\nabla_\theta J(\theta) = \frac{1}{m} \sum^{m}_{i=1} \nabla_\theta log P(\tau^{(i)};\theta)R(\tau^{(i)})\) where each \(\tau^{(i)}\) is a sampled trajectory.
+
+But we still have some mathematics work to do there: we need to simplify \(\nabla_\theta log P(\tau|\theta)\)
+
+We know that:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)= \nabla_\theta log[ \mu(s_0) \prod_{t=0}^{H} P(s_{t+1}^{(i)}|s_{t}^{(i)}, a_{t}^{(i)}) \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})]\)
+
+Where \(\mu(s_0)\) is the initial state distribution and \(P(s_{t+1}^{(i)}|s_{t}^{(i)}, a_{t}^{(i)})\) is the state transition dynamics of the MDP.
+
+We know that the log of a product is equal to the sum of the logs:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)= \nabla_\theta \left[log \mu(s_0) + \sum\limits_{t=0}^{H}log P(s_{t+1}^{(i)}|s_{t}^{(i)} a_{t}^{(i)}) + \sum\limits_{t=0}^{H}log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\right]\)
+
+We also know that the gradient of the sum is equal to the sum of gradient:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)=\nabla_\theta log\mu(s_0) + \nabla_\theta \sum\limits_{t=0}^{H} log P(s_{t+1}^{(i)}|s_{t}^{(i)} a_{t}^{(i)}) + \nabla_\theta \sum\limits_{t=0}^{H} log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\)
+
+Since neither initial state distribution or state transition dynamics of the MDP are dependent of \(\theta\), the derivate of both terms are 0. So we can remove them:
+
+Since: \(\nabla_\theta \sum_{t=0}^{H} log P(s_{t+1}^{(i)}|s_{t}^{(i)}  a_{t}^{(i)}) = 0\) and \(\nabla_\theta \mu(s_0) = 0\)
+
+\(\nabla_\theta log P(\tau^{(i)};\theta) =   \nabla_\theta \sum_{t=0}^{H} log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\)
+
+We can rewrite the gradient of the sum as the sum of gradients:
+
+\(\nabla_\theta log P(\tau^{(i)};\theta)=    \sum_{t=0}^{H} \nabla_\theta log \pi_\theta(a_{t}^{(i)}|s_{t}^{(i)})\)
+
+So, the final formula for estimating the policy gradient is:
+
+\(\nabla_{\theta} J(\theta) = \hat{g} = \frac{1}{m} \sum^{m}_{i=1} \sum^{H}_{t=0} \nabla_\theta \log \pi_\theta(a^{(i)}_{t} | s_{t}^{(i)})R(\tau^{(i)})\)
+
+\section{Hands on}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit4/unit4.ipynb}{Official Unit 4 notebook (Google Colab)}
+
+\href{http://hf.co/join/discord}{Course help / Discord}
+
+Now that we've studied the theory behind Reinforce, \textbf{you're ready to code your Reinforce agent with PyTorch}. And you'll test its robustness using CartPole-v1 and PixelCopter,.
+
+You'll then be able to iterate and improve this implementation for more advanced environments.
+
+\CourseFigure{envs.png}{CartPole and PixelCopter example environments (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/envs.gif}{[original animation]}}
+
+To validate this hands-on for the certification process, you need to push your trained models to the Hub and:
+
+\begin{itemize}
+\tightlist
+\item
+  Get a result of \textgreater= 350 for \texttt{Cartpole-v1}
+\item
+  Get a result of \textgreater= 5 for \texttt{PixelCopter}.
+\end{itemize}
+
+To find your result, go to the leaderboard and find your model, \textbf{the result = mean\_reward - std of reward}. \textbf{If you don't see your model on the leaderboard, go at the bottom of the leaderboard page and click on the refresh button}.
+
+\textbf{If you don't find your model, go to the bottom of the page and click on the refresh button.}
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+And you can check your progress here \url{https://huggingface.co/spaces/ThomasSimonini/Check-my-progress-Deep-RL-Course}
+
+\textbf{To start the hands-on click on Open In Colab button} :
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit4/unit4.ipynb}{Open In Colab}
+
+We strongly \textbf{recommend students use Google Colab for the hands-on exercises} instead of running them on their personal computers.
+
+By using Google Colab, \textbf{you can focus on learning and experimenting without worrying about the technical aspects} of setting up your environments.
+
+\subsection{Unit 4: Code your first Deep Reinforcement Learning Algorithm with PyTorch: Reinforce. And test its robustness}\label{unit-4-code-your-first-deep-reinforcement-learning-algorithm-with-pytorch-reinforce.-and-test-its-robustness}
+
+\CourseFigure{thumbnail.png}{Unit 4: Policy Gradient and REINFORCE course cover \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/thumbnail.png}{[original figure]}}
+
+In this notebook, you'll code your first Deep Reinforcement Learning algorithm from scratch: Reinforce (also called Monte Carlo Policy Gradient).
+
+Reinforce is a \emph{Policy-based method}: a Deep Reinforcement Learning algorithm that tries \textbf{to optimize the policy directly without using an action-value function}.
+
+More precisely, Reinforce is a \emph{Policy-gradient method}, a subclass of \emph{Policy-based methods} that aims \textbf{to optimize the policy directly by estimating the weights of the optimal policy using gradient ascent}.
+
+To test its robustness, we're going to train it in 2 different simple environments:
+
+\begin{itemize}
+\tightlist
+\item
+  Cartpole-v1
+\item
+  PixelcopterEnv
+\end{itemize}
+
+Here is an example of what \textbf{you will achieve at the end of this notebook.}
+
+\CourseFigure{envs.png}{CartPole and PixelCopter example environments (animation still) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/envs.gif}{[original animation]}}
+
+\paragraph{Environments:}\label{environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://www.gymlibrary.dev/environments/classic_control/cart_pole/}{CartPole-v1}
+\item
+  \href{https://pygame-learning-environment.readthedocs.io/en/latest/user/games/pixelcopter.html}{PixelCopter}
+\end{itemize}
+
+\paragraph{RL-Library:}\label{rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  Python
+\item
+  PyTorch
+\end{itemize}
+
+We're constantly trying to improve our tutorials, so \textbf{if you find some issues in this notebook}, please \href{https://github.com/huggingface/deep-rl-class/issues}{open an issue on the GitHub Repo}.
+
+\subsubsection{Objectives of this notebook}\label{objectives-of-this-notebook}
+
+At the end of the notebook, you will:
+
+\begin{itemize}
+\tightlist
+\item
+  Be able to \textbf{code a Reinforce algorithm from scratch using PyTorch.}
+\item
+  Be able to \textbf{test the robustness of your agent using simple environments.}
+\item
+  Be able to \textbf{push your trained agent to the Hub} with a nice video replay and an evaluation score .
+\end{itemize}
+
+\subsubsection{Prerequisites}\label{prerequisites}
+
+Before diving into the notebook, you need to:
+
+\href{https://huggingface.co/deep-rl-course/unit4/introduction}{Study Policy Gradients by reading Unit 4}
+
+\subsection{Let's code Reinforce algorithm from scratch}\label{lets-code-reinforce-algorithm-from-scratch}
+
+\subsubsection{Some advice Tip:}\label{some-advice-tip}
+
+It's better to run this colab in a copy on your Google Drive, so that \textbf{if it times out} you still have the saved notebook on your Google Drive and do not need to fill everything in from scratch.
+
+To do that you can either do \texttt{Ctrl\ +\ S} or \texttt{File\ \textgreater{}\ Save\ a\ copy\ in\ Google\ Drive.}
+
+\subsubsection{Set the GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  To \textbf{accelerate the agent's training, we'll use a GPU}. To do that, go to \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Colab runtime selection: first step \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Colab GPU accelerator selection \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[original figure]}}
+
+\subsubsection{Create a virtual display}\label{create-a-virtual-display}
+
+During the notebook, we'll need to generate a replay video. To do so, with colab, \textbf{we need to have a virtual screen to be able to render the environment} (and thus record the frames).
+
+The following cell will install the librairies and create and run a virtual screen
+
+\begin{lstlisting}
+%%capture
+!apt install python-opengl
+!apt install ffmpeg
+!apt install xvfb
+!pip install pyvirtualdisplay
+!pip install pyglet==1.5.1
+\end{lstlisting}
+
+\begin{lstlisting}
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsubsection{Install the dependencies}\label{install-the-dependencies}
+
+The first step is to install the dependencies. We'll install multiple ones:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{gym}
+\item
+  \texttt{gym-games}: Extra gym environments made with PyGame.
+\item
+  \texttt{huggingface\_hub}: The Hub works as a central place where anyone can share and explore models and datasets. It has versioning, metrics, visualizations, and other features that will allow you to easily collaborate with others.
+\end{itemize}
+
+You may be wondering why we install gym and not gymnasium, a more recent version of gym? \textbf{Because the gym-games we are using are not updated yet with gymnasium}.
+
+The differences you'll encounter here:
+
+\begin{itemize}
+\tightlist
+\item
+  In \texttt{gym} we don't have \texttt{terminated} and \texttt{truncated} but only \texttt{done}.
+\item
+  In \texttt{gym} using \texttt{env.step()} returns \texttt{state,\ reward,\ done,\ info}
+\end{itemize}
+
+You can learn more about the differences between Gym and Gymnasium here \url{https://gymnasium.farama.org/content/migration-guide/}
+
+You can see here all the Reinforce models available \url{https://huggingface.co/models?other=reinforce}
+
+And you can find all the Deep Reinforcement Learning models here \url{https://huggingface.co/models?pipeline_tag=reinforcement-learning}
+
+\begin{lstlisting}
+!pip install -r https://raw.githubusercontent.com/huggingface/deep-rl-class/main/notebooks/unit4/requirements-unit4.txt
+\end{lstlisting}
+
+\subsubsection{Import the packages}\label{import-the-packages}
+
+In addition to importing the installed libraries, we also import:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{imageio}: A library that will help us to generate a replay video
+\end{itemize}
+
+\begin{lstlisting}
+import numpy as np
+
+from collections import deque
+
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+# PyTorch
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.distributions import Categorical
+
+# Gym
+import gym
+import gym_pygame
+
+# Hugging Face Hub
+from huggingface_hub import notebook_login # To log to our Hugging Face account to be able to upload models to the Hub.
+import imageio
+\end{lstlisting}
+
+\subsubsection{Check if we have a GPU}\label{check-if-we-have-a-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  Let's check if we have a GPU
+\item
+  If it's the case you should see \texttt{device:cuda0}
+\end{itemize}
+
+\begin{lstlisting}
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+\end{lstlisting}
+
+\begin{lstlisting}
+print(device)
+\end{lstlisting}
+
+We're now ready to implement our Reinforce algorithm
+
+\subsection{First agent: Playing CartPole-v1}\label{first-agent-playing-cartpole-v1}
+
+\subsubsection{Create the CartPole environment and understand how it works}\label{create-the-cartpole-environment-and-understand-how-it-works}
+
+\paragraph{\texorpdfstring{\href{https://www.gymlibrary.dev/environments/classic_control/cart_pole/}{The environment}}{The environment}}\label{the-environment}
+
+\paragraph{Why do we use a simple environment like CartPole-v1?}\label{why-do-we-use-a-simple-environment-like-cartpole-v1}
+
+As explained in \href{https://stable-baselines3.readthedocs.io/en/master/guide/rl_tips.html}{Reinforcement Learning Tips and Tricks}, when you implement your agent from scratch, you need \textbf{to be sure that it works correctly and find bugs with easy environments before going deeper} as finding bugs will be much easier in simple environments.
+
+\begin{quote}
+Try to have some ``sign of life'' on toy problems
+\end{quote}
+
+\begin{quote}
+Validate the implementation by making it run on harder and harder envs (you can compare results against the RL zoo). You usually need to run hyperparameter optimization for that step.
+\end{quote}
+
+\paragraph{The CartPole-v1 environment}\label{the-cartpole-v1-environment}
+
+\begin{quote}
+A pole is attached by an un-actuated joint to a cart, which moves along a frictionless track. The pendulum is placed upright on the cart and the goal is to balance the pole by applying forces in the left and right direction on the cart.
+\end{quote}
+
+So, we start with CartPole-v1. The goal is to push the cart left or right \textbf{so that the pole stays in the equilibrium.}
+
+The episode ends if:
+
+\begin{itemize}
+\tightlist
+\item
+  The pole Angle is greater than ±12°
+\item
+  The Cart Position is greater than ±2.4
+\item
+  The episode length is greater than 500
+\end{itemize}
+
+We get a reward of +1 every timestep that the Pole stays in the equilibrium.
+
+\begin{lstlisting}
+env_id = "CartPole-v1"
+# Create the env
+env = gym.make(env_id)
+
+# Create the evaluation env
+eval_env = gym.make(env_id)
+
+# Get the state space and action space
+s_size = env.observation_space.shape[0]
+a_size = env.action_space.n
+\end{lstlisting}
+
+\begin{lstlisting}
+print("_____OBSERVATION SPACE_____ \n")
+print("The State Space is: ", s_size)
+print("Sample observation", env.observation_space.sample())  # Get a random observation
+\end{lstlisting}
+
+\begin{lstlisting}
+print("\n _____ACTION SPACE_____ \n")
+print("The Action Space is: ", a_size)
+print("Action Space Sample", env.action_space.sample())  # Take a random action
+\end{lstlisting}
+
+\subsubsection{Let's build the Reinforce Architecture}\label{lets-build-the-reinforce-architecture}
+
+This implementation is based on three implementations:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/pytorch/examples/blob/main/reinforcement_learning/reinforce.py}{PyTorch official Reinforcement Learning example}
+\item
+  \href{https://github.com/udacity/deep-reinforcement-learning/blob/master/reinforce/REINFORCE.ipynb}{Udacity Reinforce}
+\item
+  \href{https://github.com/huggingface/deep-rl-class/pull/95}{Improvement of the integration by Chris1nexus}
+\end{itemize}
+
+\CourseFigure{reinforce.png}{REINFORCE policy-network architecture \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/reinforce.png}{[original figure]}}
+
+So we want:
+
+\begin{itemize}
+\tightlist
+\item
+  Two fully connected layers (fc1 and fc2).
+\item
+  To use ReLU as activation function of fc1
+\item
+  To use Softmax to output a probability distribution over actions
+\end{itemize}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        # Create two fully connected layers
+
+
+
+    def forward(self, x):
+        # Define the forward pass
+        # state goes to fc1 then we apply ReLU activation function
+
+        # fc1 outputs goes to fc2
+
+        # We output the softmax
+
+    def act(self, state):
+        """
+        Given a state, take action
+        """
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = np.argmax(m)
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+\paragraph{Solution}\label{solution}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, a_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = np.argmax(m)
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+I made a mistake, can you guess where?
+
+\begin{itemize}
+\tightlist
+\item
+  To find out let's make a forward pass:
+\end{itemize}
+
+\begin{lstlisting}
+debug_policy = Policy(s_size, a_size, 64).to(device)
+debug_policy.act(env.reset())
+\end{lstlisting}
+
+\begin{itemize}
+\item
+  Here we see that the error says \texttt{ValueError:\ The\ value\ argument\ to\ log\_prob\ must\ be\ a\ Tensor}
+\item
+  It means that \texttt{action} in \texttt{m.log\_prob(action)} must be a Tensor \textbf{but it's not.}
+\item
+  Do you know why? Check the act function and try to see why it does not work.
+\end{itemize}
+
+Advice Tip:: Something is wrong in this implementation. Remember that for the act function \textbf{we want to sample an action from the probability distribution over actions}.
+
+\paragraph{(Real) Solution}\label{real-solution}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, a_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+By using CartPole, it was easier to debug since \textbf{we know that the bug comes from our integration and not from our simple environment}.
+
+\begin{itemize}
+\item
+  Since \textbf{we want to sample an action from the probability distribution over actions}, we can't use \texttt{action\ =\ np.argmax(m)} since it will always output the action that has the highest probability.
+\item
+  We need to replace this with \texttt{action\ =\ m.sample()} which will sample an action from the probability distribution P(.\textbar s)
+\end{itemize}
+
+\paragraph{Let's build the Reinforce Training Algorithm}\label{lets-build-the-reinforce-training-algorithm}
+
+This is the Reinforce algorithm pseudocode:
+
+\CourseFigure{pg_pseudocode.png}{Pseudocode for the REINFORCE algorithm \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/pg_pseudocode.png}{[original figure]}}
+
+\begin{itemize}
+\item
+  When we calculate the return Gt (line 6), we see that we calculate the sum of discounted rewards \textbf{starting at timestep t}.
+\item
+  Why? Because our policy should only \textbf{reinforce actions on the basis of the consequences}: so rewards obtained before taking an action are useless (since they were not because of the action), \textbf{only the ones that come after the action matters}.
+\item
+  Before coding this you should read this section \href{https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html\#don-t-let-the-past-distract-you}{don't let the past distract you} that explains why we use reward-to-go policy gradient.
+\end{itemize}
+
+We use an interesting technique coded by \href{https://github.com/Chris1nexus}{Chris1nexus} to \textbf{compute the return at each timestep efficiently}. The comments explained the procedure. Don't hesitate also \href{https://github.com/huggingface/deep-rl-class/pull/95}{to check the PR explanation} But overall the idea is to \textbf{compute the return at each timestep efficiently}.
+
+The second question you may ask is \textbf{why do we minimize the loss}? Didn't we talk about Gradient Ascent, not Gradient Descent earlier?
+
+\begin{itemize}
+\tightlist
+\item
+  We want to maximize our utility function \(J(\theta)\), but in PyTorch and TensorFlow, it's better to \textbf{minimize an objective function.}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    So let's say we want to reinforce action 3 at a certain timestep. Before training this action P is 0.25.
+  \item
+    So we want to modify \(theta\) such that \(\pi_\theta(a_3|s; \theta) > 0.25\)
+  \item
+    Because all P must sum to 1, max \(pi_\theta(a_3|s; \theta)\) will \textbf{minimize other action probability.}
+  \item
+    So we should tell PyTorch \textbf{to min \(1 - \pi_\theta(a_3|s; \theta)\).}
+  \item
+    This loss function approaches 0 as \(\pi_\theta(a_3|s; \theta)\) nears 1.
+  \item
+    So we are encouraging the gradient to max \(\pi_\theta(a_3|s; \theta)\)
+  \end{itemize}
+\end{itemize}
+
+\begin{lstlisting}
+def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every):
+    # Help us to calculate the score during the training
+    scores_deque = deque(maxlen=100)
+    scores = []
+    # Line 3 of pseudocode
+    for i_episode in range(1, n_training_episodes+1):
+        saved_log_probs = []
+        rewards = []
+        state = # TODO: reset the environment
+        # Line 4 of pseudocode
+        for t in range(max_t):
+            action, log_prob = # TODO get the action
+            saved_log_probs.append(log_prob)
+            state, reward, done, _ = # TODO: take an env step
+            rewards.append(reward)
+            if done:
+                break
+        scores_deque.append(sum(rewards))
+        scores.append(sum(rewards))
+
+        # Line 6 of pseudocode: calculate the return
+        returns = deque(maxlen=max_t)
+        n_steps = len(rewards)
+        # Compute the discounted returns at each timestep,
+        # as the sum of the gamma-discounted return at time t (G_t) + the reward at time t
+
+        # In O(N) time, where N is the number of time steps
+        # (this definition of the discounted return G_t follows the definition of this quantity
+        # shown at page 44 of Sutton&Barto 2017 2nd draft)
+        # G_t = r_(t+1) + r_(t+2) + ...
+
+        # Given this formulation, the returns at each timestep t can be computed
+        # by re-using the computed future returns G_(t+1) to compute the current return G_t
+        # G_t = r_(t+1) + gamma*G_(t+1)
+        # G_(t-1) = r_t + gamma* G_t
+        # (this follows a dynamic programming approach, with which we memorize solutions in order
+        # to avoid computing them multiple times)
+
+        # This is correct since the above is equivalent to (see also page 46 of Sutton&Barto 2017 2nd draft)
+        # G_(t-1) = r_t + gamma*r_(t+1) + gamma*gamma*r_(t+2) + ...
+
+
+        ## Given the above, we calculate the returns at timestep t as:
+        #               gamma[t] * return[t] + reward[t]
+        #
+        ## We compute this starting from the last timestep to the first, in order
+        ## to employ the formula presented above and avoid redundant computations that would be needed
+        ## if we were to do it from first to last.
+
+        ## Hence, the queue "returns" will hold the returns in chronological order, from t=0 to t=n_steps
+        ## thanks to the appendleft() function which allows to append to the position 0 in constant time O(1)
+        ## a normal python list would instead require O(N) to do this.
+        for t in range(n_steps)[::-1]:
+            disc_return_t = (returns[0] if len(returns)>0 else 0)
+            returns.appendleft(    ) # TODO: complete here
+
+        ## standardization of the returns is employed to make training more stable
+        eps = np.finfo(np.float32).eps.item()
+
+        ## eps is the smallest representable float, which is
+        # added to the standard deviation of the returns to avoid numerical instabilities
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + eps)
+
+        # Line 7:
+        policy_loss = []
+        for log_prob, disc_return in zip(saved_log_probs, returns):
+            policy_loss.append(-log_prob * disc_return)
+        policy_loss = torch.cat(policy_loss).sum()
+
+        # Line 8: PyTorch prefers gradient descent
+        optimizer.zero_grad()
+        policy_loss.backward()
+        optimizer.step()
+
+        if i_episode % print_every == 0:
+            print('Episode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_deque)))
+
+    return scores
+\end{lstlisting}
+
+\subparagraph{Solution}\label{solution-1}
+
+\begin{lstlisting}
+def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every):
+    # Help us to calculate the score during the training
+    scores_deque = deque(maxlen=100)
+    scores = []
+    # Line 3 of pseudocode
+    for i_episode in range(1, n_training_episodes + 1):
+        saved_log_probs = []
+        rewards = []
+        state = env.reset()
+        # Line 4 of pseudocode
+        for t in range(max_t):
+            action, log_prob = policy.act(state)
+            saved_log_probs.append(log_prob)
+            state, reward, done, _ = env.step(action)
+            rewards.append(reward)
+            if done:
+                break
+        scores_deque.append(sum(rewards))
+        scores.append(sum(rewards))
+
+        # Line 6 of pseudocode: calculate the return
+        returns = deque(maxlen=max_t)
+        n_steps = len(rewards)
+        # Compute the discounted returns at each timestep,
+        # as
+        #      the sum of the gamma-discounted return at time t (G_t) + the reward at time t
+        #
+        # In O(N) time, where N is the number of time steps
+        # (this definition of the discounted return G_t follows the definition of this quantity
+        # shown at page 44 of Sutton&Barto 2017 2nd draft)
+        # G_t = r_(t+1) + r_(t+2) + ...
+
+        # Given this formulation, the returns at each timestep t can be computed
+        # by re-using the computed future returns G_(t+1) to compute the current return G_t
+        # G_t = r_(t+1) + gamma*G_(t+1)
+        # G_(t-1) = r_t + gamma* G_t
+        # (this follows a dynamic programming approach, with which we memorize solutions in order
+        # to avoid computing them multiple times)
+
+        # This is correct since the above is equivalent to (see also page 46 of Sutton&Barto 2017 2nd draft)
+        # G_(t-1) = r_t + gamma*r_(t+1) + gamma*gamma*r_(t+2) + ...
+
+        ## Given the above, we calculate the returns at timestep t as:
+        #               gamma[t] * return[t] + reward[t]
+        #
+        ## We compute this starting from the last timestep to the first, in order
+        ## to employ the formula presented above and avoid redundant computations that would be needed
+        ## if we were to do it from first to last.
+
+        ## Hence, the queue "returns" will hold the returns in chronological order, from t=0 to t=n_steps
+        ## thanks to the appendleft() function which allows to append to the position 0 in constant time O(1)
+        ## a normal python list would instead require O(N) to do this.
+        for t in range(n_steps)[::-1]:
+            disc_return_t = returns[0] if len(returns) > 0 else 0
+            returns.appendleft(gamma * disc_return_t + rewards[t])
+
+        ## standardization of the returns is employed to make training more stable
+        eps = np.finfo(np.float32).eps.item()
+        ## eps is the smallest representable float, which is
+        # added to the standard deviation of the returns to avoid numerical instabilities
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + eps)
+
+        # Line 7:
+        policy_loss = []
+        for log_prob, disc_return in zip(saved_log_probs, returns):
+            policy_loss.append(-log_prob * disc_return)
+        policy_loss = torch.cat(policy_loss).sum()
+
+        # Line 8: PyTorch prefers gradient descent
+        optimizer.zero_grad()
+        policy_loss.backward()
+        optimizer.step()
+
+        if i_episode % print_every == 0:
+            print("Episode {}\tAverage Score: {:.2f}".format(i_episode, np.mean(scores_deque)))
+
+    return scores
+\end{lstlisting}
+
+\subsubsection{Train it}\label{train-it}
+
+\begin{itemize}
+\tightlist
+\item
+  We're now ready to train our agent.
+\item
+  But first, we define a variable containing all the training hyperparameters.
+\item
+  You can change the training parameters (and should )
+\end{itemize}
+
+\begin{lstlisting}
+cartpole_hyperparameters = {
+    "h_size": 16,
+    "n_training_episodes": 1000,
+    "n_evaluation_episodes": 10,
+    "max_t": 1000,
+    "gamma": 1.0,
+    "lr": 1e-2,
+    "env_id": env_id,
+    "state_space": s_size,
+    "action_space": a_size,
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+# Create policy and place it to the device
+cartpole_policy = Policy(
+    cartpole_hyperparameters["state_space"],
+    cartpole_hyperparameters["action_space"],
+    cartpole_hyperparameters["h_size"],
+).to(device)
+cartpole_optimizer = optim.Adam(cartpole_policy.parameters(), lr=cartpole_hyperparameters["lr"])
+\end{lstlisting}
+
+\begin{lstlisting}
+scores = reinforce(
+    cartpole_policy,
+    cartpole_optimizer,
+    cartpole_hyperparameters["n_training_episodes"],
+    cartpole_hyperparameters["max_t"],
+    cartpole_hyperparameters["gamma"],
+    100,
+)
+\end{lstlisting}
+
+\subsubsection{Define evaluation method}\label{define-evaluation-method}
+
+\begin{itemize}
+\tightlist
+\item
+  Here we define the evaluation method that we're going to use to test our Reinforce agent.
+\end{itemize}
+
+\begin{lstlisting}
+def evaluate_agent(env, max_steps, n_eval_episodes, policy):
+    """
+    Evaluate the agent for ``n_eval_episodes`` episodes and returns average reward and std of reward.
+    :param env: The evaluation environment
+    :param n_eval_episodes: Number of episode to evaluate the agent
+    :param policy: The Reinforce agent
+    """
+    episode_rewards = []
+    for episode in range(n_eval_episodes):
+        state = env.reset()
+        step = 0
+        done = False
+        total_rewards_ep = 0
+
+        for step in range(max_steps):
+            action, _ = policy.act(state)
+            new_state, reward, done, info = env.step(action)
+            total_rewards_ep += reward
+
+            if done:
+                break
+            state = new_state
+        episode_rewards.append(total_rewards_ep)
+    mean_reward = np.mean(episode_rewards)
+    std_reward = np.std(episode_rewards)
+
+    return mean_reward, std_reward
+\end{lstlisting}
+
+\subsubsection{Evaluate our agent}\label{evaluate-our-agent}
+
+\begin{lstlisting}
+evaluate_agent(
+    eval_env, cartpole_hyperparameters["max_t"], cartpole_hyperparameters["n_evaluation_episodes"], cartpole_policy
+)
+\end{lstlisting}
+
+\paragraph{Publish our trained model on the Hub}\label{publish-our-trained-model-on-the-hub}
+
+Now that we saw we got good results after the training, we can publish our trained model on the hub with one line of code.
+
+Here's an example of a Model Card:
+
+\CourseFigure{modelcard.png}{Hugging Face model card interface \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/modelcard.png}{[original figure]}}
+
+\paragraph{Push to the Hub}\label{push-to-the-hub}
+
+\subparagraph{Do not modify this code}\label{do-not-modify-this-code}
+
+\begin{lstlisting}
+from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub.repocard import metadata_eval_result, metadata_save
+
+from pathlib import Path
+import datetime
+import json
+import imageio
+
+import tempfile
+
+import os
+\end{lstlisting}
+
+\begin{lstlisting}
+def record_video(env, policy, out_directory, fps=30):
+    """
+    Generate a replay video of the agent
+    :param env
+    :param Qtable: Qtable of our agent
+    :param out_directory
+    :param fps: how many frame per seconds (with taxi-v3 and frozenlake-v1 we use 1)
+    """
+    images = []
+    done = False
+    state = env.reset()
+    img = env.render(mode="rgb_array")
+    images.append(img)
+    while not done:
+        # Take the action (index) that have the maximum expected future reward given that state
+        action, _ = policy.act(state)
+        state, reward, done, info = env.step(action)  # We directly put next_state = state for recording logic
+        img = env.render(mode="rgb_array")
+        images.append(img)
+    imageio.mimsave(out_directory, [np.array(img) for i, img in enumerate(images)], fps=fps)
+\end{lstlisting}
+
+\begin{lstlisting}
+def push_to_hub(repo_id,
+                model,
+                hyperparameters,
+                eval_env,
+                video_fps=30
+                ):
+  """
+  Evaluate, Generate a video and Upload a model to Hugging Face Hub.
+  This method does the complete pipeline:
+  - It evaluates the model
+  - It generates the model card
+  - It generates a replay video of the agent
+  - It pushes everything to the Hub
+
+  :param repo_id: repo_id: id of the model repository from the Hugging Face Hub
+  :param model: the pytorch model we want to save
+  :param hyperparameters: training hyperparameters
+  :param eval_env: evaluation environment
+  :param video_fps: how many frame per seconds to record our video replay
+  """
+
+  _, repo_name = repo_id.split("/")
+  api = HfApi()
+
+  # Step 1: Create the repo
+  repo_url = api.create_repo(
+        repo_id=repo_id,
+        exist_ok=True,
+  )
+
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    local_directory = Path(tmpdirname)
+
+    # Step 2: Save the model
+    torch.save(model, local_directory / "model.pt")
+
+    # Step 3: Save the hyperparameters to JSON
+    with open(local_directory / "hyperparameters.json", "w") as outfile:
+      json.dump(hyperparameters, outfile)
+
+    # Step 4: Evaluate the model and build JSON
+    mean_reward, std_reward = evaluate_agent(eval_env,
+                                            hyperparameters["max_t"],
+                                            hyperparameters["n_evaluation_episodes"],
+                                            model)
+    # Get datetime
+    eval_datetime = datetime.datetime.now()
+    eval_form_datetime = eval_datetime.isoformat()
+
+    evaluate_data = {
+          "env_id": hyperparameters["env_id"],
+          "mean_reward": mean_reward,
+          "n_evaluation_episodes": hyperparameters["n_evaluation_episodes"],
+          "eval_datetime": eval_form_datetime,
+    }
+
+    # Write a JSON file
+    with open(local_directory / "results.json", "w") as outfile:
+        json.dump(evaluate_data, outfile)
+
+    # Step 5: Create the model card
+    env_name = hyperparameters["env_id"]
+
+    metadata = {}
+    metadata["tags"] = [
+          env_name,
+          "reinforce",
+          "reinforcement-learning",
+          "custom-implementation",
+          "deep-rl-class"
+      ]
+
+    # Add metrics
+    eval = metadata_eval_result(
+        model_pretty_name=repo_name,
+        task_pretty_name="reinforcement-learning",
+        task_id="reinforcement-learning",
+        metrics_pretty_name="mean_reward",
+        metrics_id="mean_reward",
+        metrics_value=f"{mean_reward:.2f} +/- {std_reward:.2f}",
+        dataset_pretty_name=env_name,
+        dataset_id=env_name,
+      )
+
+    # Merges both dictionaries
+    metadata = {**metadata, **eval}
+
+    model_card = f"""
+  # **Reinforce** Agent playing **{env_id}**
+  This is a trained model of a **Reinforce** agent playing **{env_id}** .
+  To learn to use this model and train yours check Unit 4 of the Deep Reinforcement Learning Course: https://huggingface.co/deep-rl-course/unit4/introduction
+  """
+
+    readme_path = local_directory / "README.md"
+    readme = ""
+    if readme_path.exists():
+        with readme_path.open("r", encoding="utf8") as f:
+          readme = f.read()
+    else:
+      readme = model_card
+
+    with readme_path.open("w", encoding="utf-8") as f:
+      f.write(readme)
+
+    # Save our metrics to Readme metadata
+    metadata_save(readme_path, metadata)
+
+    # Step 6: Record a video
+    video_path =  local_directory / "replay.mp4"
+    record_video(env, model, video_path, video_fps)
+
+    # Step 7. Push everything to the Hub
+    api.upload_folder(
+          repo_id=repo_id,
+          folder_path=local_directory,
+          path_in_repo=".",
+    )
+
+    print(f"Your model is pushed to the Hub. You can view your model here: {repo_url}")
+\end{lstlisting}
+
+By using \texttt{push\_to\_hub}, \textbf{you evaluate, record a replay, generate a model card of your agent, and push it to the Hub}.
+
+This way:
+
+\begin{itemize}
+\tightlist
+\item
+  You can \textbf{showcase our work}
+\item
+  You can \textbf{visualize your agent playing}
+\item
+  You can \textbf{share an agent with the community that others can use}
+\item
+  You can \textbf{access a leaderboard to see how well your agent is performing compared to your classmates} \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}
+\end{itemize}
+
+To be able to share your model with the community there are three more steps to follow:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  (If it's not already done) create an account to HF -\textgreater{} \url{https://huggingface.co/join}
+\item
+  Sign in and then, you need to store your authentication token from the Hugging Face website.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Create a new token (\url{https://huggingface.co/settings/tokens}) \textbf{with write role}
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Creating a Hugging Face access token \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[original figure]}}
+
+\begin{lstlisting}
+notebook_login()
+\end{lstlisting}
+
+If you don't want to use Google Colab or a Jupyter Notebook, you need to use this command instead: \texttt{huggingface-cli\ login} (or \texttt{login})
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  We're now ready to push our trained agent to the Hub using \texttt{package\_to\_hub()} function
+\end{enumerate}
+
+\begin{lstlisting}
+repo_id = ""  # TODO Define your repo id {username/Reinforce-{model-id}}
+push_to_hub(
+    repo_id,
+    cartpole_policy,  # The model we want to save
+    cartpole_hyperparameters,  # Hyperparameters
+    eval_env,  # Evaluation environment
+    video_fps=30
+)
+\end{lstlisting}
+
+Now that we tested the robustness of our implementation, let's try a more complex environment: PixelCopter
+
+\subsubsection{Second agent: PixelCopter}\label{second-agent-pixelcopter}
+
+\paragraph{Study the PixelCopter environment}\label{study-the-pixelcopter-environment}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://pygame-learning-environment.readthedocs.io/en/latest/user/games/pixelcopter.html}{The Environment documentation}
+\end{itemize}
+
+\begin{lstlisting}
+env_id = "Pixelcopter-PLE-v0"
+env = gym.make(env_id)
+eval_env = gym.make(env_id)
+s_size = env.observation_space.shape[0]
+a_size = env.action_space.n
+\end{lstlisting}
+
+\begin{lstlisting}
+print("_____OBSERVATION SPACE_____ \n")
+print("The State Space is: ", s_size)
+print("Sample observation", env.observation_space.sample())  # Get a random observation
+\end{lstlisting}
+
+\begin{lstlisting}
+print("\n _____ACTION SPACE_____ \n")
+print("The Action Space is: ", a_size)
+print("Action Space Sample", env.action_space.sample())  # Take a random action
+\end{lstlisting}
+
+The observation space (7) :
+
+\begin{itemize}
+\tightlist
+\item
+  player y position
+\item
+  player velocity
+\item
+  player distance to floor
+\item
+  player distance to ceiling
+\item
+  next block x distance to player
+\item
+  next blocks top y location
+\item
+  next blocks bottom y location
+\end{itemize}
+
+The action space(2) :
+
+\begin{itemize}
+\tightlist
+\item
+  Up (press accelerator)
+\item
+  Do nothing (don't press accelerator)
+\end{itemize}
+
+The reward function :
+
+\begin{itemize}
+\tightlist
+\item
+  For each vertical block it passes, it gains a positive reward of +1. Each time a terminal state is reached it receives a negative reward of -1.
+\end{itemize}
+
+\paragraph{Define the new Policy}\label{define-the-new-policy}
+
+\begin{itemize}
+\tightlist
+\item
+  We need to have a deeper neural network since the environment is more complex
+\end{itemize}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        # Define the three layers here
+
+    def forward(self, x):
+        # Define the forward process here
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+\subparagraph{Solution}\label{solution-2}
+
+\begin{lstlisting}
+class Policy(nn.Module):
+    def __init__(self, s_size, a_size, h_size):
+        super(Policy, self).__init__()
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, h_size * 2)
+        self.fc3 = nn.Linear(h_size * 2, a_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return F.softmax(x, dim=1)
+
+    def act(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        probs = self.forward(state).cpu()
+        m = Categorical(probs)
+        action = m.sample()
+        return action.item(), m.log_prob(action)
+\end{lstlisting}
+
+\paragraph{Define the hyperparameters}\label{define-the-hyperparameters}
+
+\begin{itemize}
+\tightlist
+\item
+  Because this environment is more complex.
+\item
+  Especially for the hidden size, we need more neurons.
+\end{itemize}
+
+\begin{lstlisting}
+pixelcopter_hyperparameters = {
+    "h_size": 64,
+    "n_training_episodes": 50000,
+    "n_evaluation_episodes": 10,
+    "max_t": 10000,
+    "gamma": 0.99,
+    "lr": 1e-4,
+    "env_id": env_id,
+    "state_space": s_size,
+    "action_space": a_size,
+}
+\end{lstlisting}
+
+\paragraph{Train it}\label{train-it-1}
+
+\begin{itemize}
+\tightlist
+\item
+  We're now ready to train our agent .
+\end{itemize}
+
+\begin{lstlisting}
+# Create policy and place it to the device
+# torch.manual_seed(50)
+pixelcopter_policy = Policy(
+    pixelcopter_hyperparameters["state_space"],
+    pixelcopter_hyperparameters["action_space"],
+    pixelcopter_hyperparameters["h_size"],
+).to(device)
+pixelcopter_optimizer = optim.Adam(pixelcopter_policy.parameters(), lr=pixelcopter_hyperparameters["lr"])
+\end{lstlisting}
+
+\begin{lstlisting}
+scores = reinforce(
+    pixelcopter_policy,
+    pixelcopter_optimizer,
+    pixelcopter_hyperparameters["n_training_episodes"],
+    pixelcopter_hyperparameters["max_t"],
+    pixelcopter_hyperparameters["gamma"],
+    1000,
+)
+\end{lstlisting}
+
+\paragraph{Publish our trained model on the Hub}\label{publish-our-trained-model-on-the-hub-1}
+
+\begin{lstlisting}
+repo_id = ""  # TODO Define your repo id {username/Reinforce-{model-id}}
+push_to_hub(
+    repo_id,
+    pixelcopter_policy,  # The model we want to save
+    pixelcopter_hyperparameters,  # Hyperparameters
+    eval_env,  # Evaluation environment
+    video_fps=30
+)
+\end{lstlisting}
+
+\subsubsection{Some additional challenges}\label{some-additional-challenges}
+
+The best way to learn \textbf{is to try things on your own}! As you saw, the current agent is not doing great. As a first suggestion, you can train for more steps. But also try to find better parameters.
+
+In the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{Leaderboard} you will find your agents. Can you get to the top?
+
+Here are some ideas to climb up the leaderboard:
+
+\begin{itemize}
+\tightlist
+\item
+  Train more steps
+\item
+  Try different hyperparameters by looking at what your classmates have done \url{https://huggingface.co/models?other=reinforce}
+\item
+  \textbf{Push your new trained model} on the Hub
+\item
+  \textbf{Improving the implementation for more complex environments} (for instance, what about changing the network to a Convolutional Neural Network to handle frames as observation)?
+\end{itemize}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\textbf{Congrats on finishing this unit}! There was a lot of information. And congrats on finishing the tutorial. You've just coded your first Deep Reinforcement Learning agent from scratch using PyTorch and shared it on the Hub .
+
+Don't hesitate to iterate on this unit \textbf{by improving the implementation for more complex environments} (for instance, what about changing the network to a Convolutional Neural Network to handle frames as observation)?
+
+In the next unit, \textbf{we're going to learn more about Unity MLAgents}, by training agents in Unity environments. This way, you will be ready to participate in the \textbf{AI vs AI challenges where you'll train your agents to compete against other agents in a snowball fight and a soccer game.}
+
+Sound fun? See you next time!
+
+Finally, we would love \textbf{to hear what you think of the course and how we can improve it}. If you have some feedback then please \href{https://forms.gle/BzKXWzLAGZESGNaE9}{fill this form}
+
+See you in Unit 5!
+
+\paragraph{Keep Learning, stay awesome}\label{keep-learning-stay-awesome}
+
+\section{Quiz}\label{quiz}
+
+The best way to learn and \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{to avoid the illusion of competence} \textbf{is to test yourself.} This will help you to find \textbf{where you need to reinforce your knowledge}.
+
+\subsubsection{Q1: What are the advantages of policy-gradient over value-based methods? (Check all that apply)}\label{q1-what-are-the-advantages-of-policy-gradient-over-value-based-methods-check-all-that-apply}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Policy-gradient methods can learn a stochastic policy
+\item
+  \textbf{B.} Policy-gradient methods are more effective in high-dimensional action spaces and continuous actions spaces
+\item
+  \textbf{C.} Policy-gradient converges most of the time on a global maximum.
+\end{itemize}
+
+\subsubsection{Q2: What is the Policy Gradient Theorem?}\label{q2-what-is-the-policy-gradient-theorem}
+
+\subsubsection{Q3: What's the difference between policy-based methods and policy-gradient methods? (Check all that apply)}\label{q3-whats-the-difference-between-policy-based-methods-and-policy-gradient-methods-check-all-that-apply}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Policy-based methods are a subset of policy-gradient methods.
+\item
+  \textbf{B.} Policy-gradient methods are a subset of policy-based methods.
+\item
+  \textbf{C.} In Policy-based methods, we can optimize the parameter \(\theta\) \textbf{indirectly} by maximizing the local approximation of the objective function with techniques like hill climbing, simulated annealing, or evolution strategies.
+\item
+  \textbf{D.} In Policy-gradient methods, we optimize the parameter \(\theta\) \textbf{directly} by performing the gradient ascent on the performance of the objective function.
+\end{itemize}
+
+\subsubsection{\texorpdfstring{Q4: Why do we use gradient ascent instead of gradient descent to optimize J(\(\theta\))?}{Q4: Why do we use gradient ascent instead of gradient descent to optimize J(\textbackslash theta)?}}\label{q4-why-do-we-use-gradient-ascent-instead-of-gradient-descent-to-optimize-jtheta}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} We want to minimize J(\(\theta\)) and gradient ascent gives us the direction of the steepest increase of J(\(\theta\))
+\item
+  \textbf{B.} We want to maximize J(\(\theta\)) and gradient ascent gives us the direction of the steepest increase of J(\(\theta\))
+\end{itemize}
+
+Congrats on finishing this Quiz , if you missed some elements, take time to read the chapter again to reinforce () your knowledge.
+
+\subsection{Quiz solutions and explanations}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Q1 solution}\label{q1-solution}
+
+\textbf{Correct answer(s):} A, B
+
+\textbf{A.} Policy-gradient methods can learn a stochastic policy
+
+\textbf{B.} Policy-gradient methods are more effective in high-dimensional action spaces and continuous actions spaces
+
+\textbf{C.} Policy-gradient converges most of the time on a global maximum. Explanation: No, frequently, policy-gradient converges on a local maximum instead of a global optimum.
+
+\subsubsection{Q2 solution}\label{q2-solution}
+
+\emph{The Policy Gradient Theorem} is a formula that will help us to reformulate the objective function into a differentiable function that does not involve the differentiation of the state distribution.
+
+\CourseFigure{policy_gradient_theorem.png}{The policy-gradient theorem \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit6/policy_gradient_theorem.png}{[original figure]}}
+
+\subsubsection{Q3 solution}\label{q3-solution}
+
+\textbf{Correct answer(s):} B, C, D
+
+\textbf{A.} Policy-based methods are a subset of policy-gradient methods.
+
+\textbf{B.} Policy-gradient methods are a subset of policy-based methods.
+
+\textbf{C.} In Policy-based methods, we can optimize the parameter \(\theta\) \textbf{indirectly} by maximizing the local approximation of the objective function with techniques like hill climbing, simulated annealing, or evolution strategies.
+
+\textbf{D.} In Policy-gradient methods, we optimize the parameter \(\theta\) \textbf{directly} by performing the gradient ascent on the performance of the objective function.
+
+\subsubsection{Q4 solution}\label{q4-solution}
+
+\textbf{Correct answer(s):} B
+
+\textbf{A.} We want to minimize J(\(\theta\)) and gradient ascent gives us the direction of the steepest increase of J(\(\theta\))
+
+\textbf{B.} We want to maximize J(\(\theta\)) and gradient ascent gives us the direction of the steepest increase of J(\(\theta\))
+
+\section{Conclusion}\label{conclusion}
+
+\textbf{Congrats on finishing this unit}! There was a lot of information. And congrats on finishing the tutorial. You've just coded your first Deep Reinforcement Learning agent from scratch using PyTorch and shared it on the Hub .
+
+Don't hesitate to iterate on this unit \textbf{by improving the implementation for more complex environments} (for instance, what about changing the network to a Convolutional Neural Network to handle frames as observation)?
+
+In the next unit, \textbf{we're going to learn more about Unity MLAgents}, by training agents in Unity environments. This way, you will be ready to participate in the \textbf{AI vs AI challenges where you'll train your agents to compete against other agents in a snowball fight and a soccer game.}
+
+Sound fun? See you next time!
+
+Finally, we would love \textbf{to hear what you think of the course and how we can improve it}. If you have some feedback then please \href{https://forms.gle/BzKXWzLAGZESGNaE9}{fill this form}
+
+\subsubsection{Keep Learning, stay awesome}\label{keep-learning-stay-awesome-1}
+
+\section{Glossary}\label{glossary}
+
+This is a community-created glossary. Contributions are welcome!
+
+\begin{itemize}
+\item
+  \textbf{Deep Q-Learning:} A value-based deep reinforcement learning algorithm that uses a deep neural network to approximate Q-values for actions in a given state. The goal of Deep Q-learning is to find the optimal policy that maximizes the expected cumulative reward by learning the action-values.
+\item
+  \textbf{Value-based methods:} Reinforcement Learning methods that estimate a value function as an intermediate step towards finding an optimal policy.
+\item
+  \textbf{Policy-based methods:} Reinforcement Learning methods that directly learn to approximate the optimal policy without learning a value function. In practice they output a probability distribution over actions.
+
+  The benefits of using policy-gradient methods over value-based methods include:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    simplicity of integration: no need to store action values;
+  \item
+    ability to learn a stochastic policy: the agent explores the state space without always taking the same trajectory, and avoids the problem of perceptual aliasing;
+  \item
+    effectiveness in high-dimensional and continuous action spaces; and
+  \item
+    improved convergence properties.
+  \end{itemize}
+\item
+  \textbf{Policy Gradient:} A subset of policy-based methods where the objective is to maximize the performance of a parameterized policy using gradient ascent. The goal of a policy-gradient is to control the probability distribution of actions by tuning the policy such that good actions (that maximize the return) are sampled more frequently in the future.
+\item
+  \textbf{Monte Carlo Reinforce:} A policy-gradient algorithm that uses an estimated return from an entire episode to update the policy parameter.
+\end{itemize}
+
+If you want to improve the course, you can \href{https://github.com/huggingface/deep-rl-class/pulls}{open a Pull Request.}
+
+This glossary was made possible thanks to:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/dcarpintero}{Diego Carpintero}
+\end{itemize}
+
+\section{Additional Readings}\label{additional-readings}
+
+These are \textbf{optional readings} if you want to go deeper.
+
+\subsection{Introduction to Policy Optimization}\label{introduction-to-policy-optimization}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html}{Part 3: Intro to Policy Optimization - Spinning Up documentation}
+\end{itemize}
+
+\subsection{Policy Gradient}\label{policy-gradient}
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://johnwlambert.github.io/policy-gradients/}
+\item
+  \href{https://jonathan-hui.medium.com/rl-policy-gradients-explained-9b13b688b146}{RL - Policy Gradient Explained}
+\item
+  \href{http://incompleteideas.net/book/RLbook2020.pdf}{Chapter 13, Policy Gradient Methods; Reinforcement Learning, an introduction by Richard Sutton and Andrew G. Barto}
+\end{itemize}
+
+\subsection{Implementation}\label{implementation}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/pytorch/examples/blob/main/reinforcement_learning/reinforce.py}{PyTorch Reinforce implementation}
+\item
+  \href{https://github.com/MrSyee/pg-is-all-you-need}{Implementations from DDPG to PPO}
+\end{itemize}
+
+\end{document}

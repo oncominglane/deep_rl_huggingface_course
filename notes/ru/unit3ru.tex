@@ -1,0 +1,912 @@
+% !TEX program = pdflatex
+% Курс Deep RL от Hugging Face, модуль 3, русское учебное издание.
+% Сборка из notes/ru/: latexmk -pdf unit3ru.tex; uses shared preamble.tex.
+\PassOptionsToPackage{T2A}{fontenc}
+\PassOptionsToPackage{russian}{babel}
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\renewcommand{\rmdefault}{cmr}
+\renewcommand{\sfdefault}{cmss}
+\renewcommand{\ttdefault}{cmtt}
+\graphicspath{{../assets/unit3/}}
+% The shared preamble has a Unit 1 label: override the unit-specific running header.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}Курс Deep RL от Hugging Face \enspace/\enspace Модуль 3}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Глубокое Q-обучение}
+\title{\textbf{Глубокое обучение с подкреплением}\\[0.35em]\large Модуль 3: глубокое Q-обучение}
+\author{Курс Deep RL от Hugging Face\\\small Полное учебное издание на основе исходных MDX-файлов}
+\date{}
+\begin{document}
+\selectlanguage{russian}
+\fontencoding{T2A}\selectfont
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Исходный материал: курс Deep RL от Hugging Face.\end{center}
+\tableofcontents
+\vspace{1em}
+\clearpage
+
+\section{Глубокое Q-обучение}\label{deep-q-learning}
+
+\CourseFigure{thumbnail.jpg}{Обложка модуля 3: глубокое Q-обучение \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/thumbnail.jpg}{[оригинал]}}
+
+В предыдущем модуле мы познакомились с первым алгоритмом обучения с подкреплением --- Q-обучением, \textbf{реализовали его с нуля} и обучили агента в двух средах: FrozenLake-v1 (замёрзшее озеро) и Taxi-v3 (такси).
+
+С помощью этого простого алгоритма мы получили отличные результаты. Однако обе среды были относительно простыми, поскольку \textbf{пространство состояний в них было небольшим и дискретным}: 16 состояний в FrozenLake-v1 и 500 в Taxi-v3. Для сравнения, пространство состояний в играх Atari может \textbf{содержать от \(10^{9}\) до \(10^{11}\) состояний}.
+
+Но, как мы увидим дальше, \textbf{создавать и обновлять Q-таблицу в средах с большим пространством состояний становится неэффективно}.
+
+Поэтому в этом модуле мы \textbf{изучим первого агента глубокого обучения с подкреплением} --- Deep Q-Learning. Вместо Q-таблицы он использует нейронную сеть, которая получает состояние на вход и аппроксимирует Q-значения всех возможных действий для этого состояния.
+
+Кроме того, \textbf{мы обучим агента играть в Space Invaders и другие игры Atari с помощью \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL-Zoo}}. Это инструментарий обучения с подкреплением на базе Stable-Baselines, содержащий скрипты для обучения и оценки агентов, подбора гиперпараметров, построения графиков и записи видео.
+
+\CourseFigure{atari-envs.png}{Примеры сред Atari, в которых можно обучать агентов \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[оригинал]}}
+
+Приступим!
+
+\section{От Q-обучения к глубокому Q-обучению}\label{from-q-learning-to-deep-q-learning}
+
+Мы узнали, что \textbf{Q-обучение --- это алгоритм для обучения Q-функции}, то есть \textbf{функции ценности действия (action-value function)}, которая определяет ценность выбора конкретного действия в конкретном состоянии.
+
+\CourseFigure{Q-function.jpg}{Табличная Q-функция: значения для пар «состояние--действие» \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-function.jpg}{[оригинал]}}
+
+Название \textbf{Q происходит от слова «качество» (quality) действия в данном состоянии}.
+
+Внутри нашего алгоритма Q-функция представлена \textbf{Q-таблицей, каждая ячейка которой соответствует ценности некоторой пары «состояние--действие»}. Можно представить эту таблицу как \textbf{память или шпаргалку Q-функции}.
+
+Проблема заключается в том, что Q-обучение --- \emph{табличный метод}. Если пространства состояний и действий \textbf{слишком велики, чтобы эффективно представить их массивами и таблицами}, такой метод перестаёт быть практичным. Иными словами, он \textbf{плохо масштабируется}. Q-обучение хорошо работало в небольших средах, например:
+
+\begin{itemize}
+\tightlist
+\item
+В FrozenLake было 16 состояний.
+\item
+В Taxi-v3 было 500 состояний.
+\end{itemize}
+
+Но сегодня мы хотим научить агента играть в Space Invaders --- более сложную игру, где входными данными служат изображения отдельных кадров.
+
+Как \href{https://twitter.com/meln1k}{отмечал Никита Мелькозеров}, \textbf{пространство наблюдений Atari} имеет размерность (210, 160, 3)*. Значения компонентов находятся в диапазоне от 0 до 255; таким образом, всего возможно \(256^{210 \times 160 \times 3} = 256^{100800}\) разных наблюдений. Для сравнения: число атомов в наблюдаемой Вселенной оценивается примерно в \(10^{80}\).
+
+\begin{itemize}
+\tightlist
+\item
+Один кадр Atari --- это изображение размером 210 на 160 пикселей. Поскольку оно цветное (RGB), используются три канала; отсюда размерность (210, 160, 3). Значение каждого канала каждого пикселя может изменяться от 0 до 255.
+\end{itemize}
+
+\CourseFigure{atari.jpg}{Огромное пространство наблюдений, представленное изображениями Atari \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari.jpg}{[оригинал]}}
+
+Следовательно, пространство состояний чрезвычайно велико, и создавать и обновлять Q-таблицу для такой среды неэффективно. Вместо этого разумнее аппроксимировать Q-значения параметризованной Q-функцией \(Q_{\theta}(s,a)\).
+
+Получая состояние на вход, нейронная сеть будет оценивать Q-значения всех допустимых действий в этом состоянии. Именно так и работает глубокое Q-обучение.
+
+\CourseFigure{deep.jpg}{Нейронная сеть аппроксимирует ценности действий вместо использования Q-таблицы \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/deep.jpg}{[оригинал]}}
+
+Теперь, разобравшись в общей идее Deep Q-Learning, рассмотрим подробнее архитектуру Deep Q-Network.
+
+\section{Глубокая Q-сеть (DQN)}\label{the-deep-q-network-dqn}
+
+Вот как устроена нейронная сеть для глубокого Q-обучения:
+
+\CourseFigure{deep-q-network.jpg}{Архитектура DQN: стек последовательных кадров и оценки ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/deep-q-network.jpg}{[оригинал]}}
+
+На вход сети подаётся \textbf{стек из четырёх кадров}, представляющий состояние, а на выходе получается \textbf{вектор Q-значений для всех возможных действий в этом состоянии}. Затем, как и в обычном Q-обучении, мы выбираем действие с помощью \(\varepsilon\)-жадной стратегии.
+
+При инициализации нейронной сети \textbf{оценки Q-значений крайне неточны}. Однако в ходе обучения агент DQN начинает связывать игровые ситуации с подходящими действиями и \textbf{учится успешно играть}.
+
+\subsection{Предобработка входа и проблема временной информации}\label{preprocessing-the-input-and-temporal-limitation}
+
+Необходимо \textbf{предобрабатывать входные данные}. Это важный этап: мы стремимся \textbf{уменьшить сложность представления состояния и сократить вычислительные затраты на обучение}.
+
+Для этого мы \textbf{уменьшаем размер изображения до 84 на 84 пикселя и переводим его в оттенки серого}. Цвета в играх Atari обычно не несут критически важной информации, поэтому мы можем \textbf{заменить три канала RGB одним каналом} и существенно сократить объём входных данных.
+
+В некоторых играх можно также \textbf{обрезать неинформативную часть экрана}. После этого мы объединяем четыре последовательных кадра в один стек.
+
+\CourseFigure{preprocessing.jpg}{Предобработка наблюдений Atari и формирование стека кадров \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/preprocessing.jpg}{[оригинал]}}
+
+\textbf{Зачем объединять четыре кадра?} Это позволяет \textbf{устранить недостаток временной информации}. Рассмотрим пример с игрой Pong. Допустим, мы видим такой кадр:
+
+\CourseFigure{temporal-limitation.jpg}{По одному кадру Pong нельзя определить скорость и направление движения мяча \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation.jpg}{[оригинал]}}
+
+Можете ли вы сказать, куда движется мяч? Нет: одного кадра недостаточно, чтобы понять движение! А если добавить ещё три кадра? \textbf{Теперь видно, что мяч движется вправо}.
+
+\CourseFigure{temporal-limitation-2.jpg}{Несколько последовательных кадров Pong позволяют определить направление мяча \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation-2.jpg}{[оригинал]}}
+
+Именно поэтому для получения информации о движении мы объединяем четыре кадра.
+
+Далее стек кадров проходит через три свёрточных слоя. Эти слои \textbf{извлекают и используют пространственные зависимости на изображениях}. Поскольку кадры объединены, сеть также \textbf{может использовать некоторые временные зависимости между ними}.
+
+Если вы пока не знаете, что такое свёрточные слои, не переживайте. Можно изучить \href{https://www.udacity.com/course/deep-learning-pytorch--ud188}{четвёртый урок бесплатного курса по глубокому обучению от Udacity}.
+
+Наконец, несколько полносвязных слоёв формируют Q-значения для всех возможных действий в данном состоянии.
+
+\CourseFigure{deep-q-network.jpg}{Архитектура DQN: стек последовательных кадров и оценки ценности действий \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/deep-q-network.jpg}{[оригинал]}}
+
+Итак, Deep Q-Learning использует нейронную сеть, которая по состоянию аппроксимирует Q-значения всех доступных действий. Теперь изучим сам алгоритм обучения.
+
+\section{Алгоритм глубокого Q-обучения}\label{the-deep-q-learning-algorithm}
+
+Мы выяснили, что глубокое Q-обучение \textbf{использует глубокую нейронную сеть для аппроксимации Q-значений всех возможных действий в каждом состоянии} (оценки функции ценности).
+
+Отличие заключается в том, что во время обучения мы не обновляем Q-значение пары «состояние--действие» непосредственно, как в обычном Q-обучении:
+
+\CourseFigure{q-ex-5.jpg}{Обновление в табличном Q-обучении как отправная точка \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-5.jpg}{[оригинал]}}
+
+в Deep Q-Learning мы определяем \textbf{функцию потерь, сравнивающую предсказанное Q-значение с целевым Q-значением. Затем с помощью градиентного спуска обновляем веса глубокой Q-сети}, чтобы она лучше аппроксимировала Q-значения.
+
+\CourseFigure{Q-target.jpg}{Функция потерь Deep Q-Learning и целевое значение TD \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/Q-target.jpg}{[оригинал]}}
+
+Алгоритм обучения Deep Q-Learning включает \emph{две фазы}:
+
+\begin{itemize}
+\tightlist
+\item
+\textbf{Сбор опыта (sampling):} агент совершает действия и \textbf{сохраняет наблюдаемые переходы в буфере воспроизведения опыта (replay memory)}.
+\item
+\textbf{Обучение (training):} мы случайным образом выбираем \textbf{небольшой пакет переходов и обучаемся на нём, выполняя шаг обновления весов градиентным спуском}.
+\end{itemize}
+
+\CourseFigure{sampling-training.jpg}{Две фазы Deep Q-Learning: сбор опыта и обучение \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/sampling-training.jpg}{[оригинал]}}
+
+Но это не единственное отличие от табличного Q-обучения. Обучение Deep Q-Learning \textbf{может быть нестабильным}, главным образом из-за сочетания нелинейной функции Q-значений (нейронной сети) и бутстрэппинга (когда целевые значения обновляют на основе уже имеющихся оценок, а не фактически полученной полной суммы вознаграждений).
+
+Чтобы стабилизировать обучение, применяют три разных приёма:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+\emph{Воспроизведение опыта (Experience Replay)} --- для \textbf{более эффективного использования накопленных переходов}.
+\item
+\emph{Фиксированная целевая Q-сеть (Fixed Q-Target)} --- \textbf{для стабилизации обучения}.
+\item
+\emph{Двойное глубокое Q-обучение (Double DQN)} --- \textbf{для уменьшения переоценки Q-значений}.
+\end{enumerate}
+
+Рассмотрим каждый из них!
+
+\subsection{Воспроизведение опыта для более эффективного обучения}\label{experience-replay-to-make-more-efficient-use-of-experiences}
+
+Зачем нам нужна память воспроизведения опыта?
+
+В Deep Q-Learning механизм Experience Replay выполняет две функции:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+\textbf{Более эффективное использование опыта во время обучения}. При обычном онлайн-обучении с подкреплением агент взаимодействует со средой, получает переходы (состояние, действие, вознаграждение и следующее состояние), учится на них (обновляет нейронную сеть), а затем отбрасывает. Это неэффективно.
+\end{enumerate}
+
+Experience Replay позволяет \textbf{эффективнее использовать уже полученные данные}. Мы храним переходы в буфере воспроизведения и \textbf{повторно используем их на протяжении обучения}.
+
+\CourseFigure{experience-replay.jpg}{Буфер воспроизведения опыта, сохраняющий предыдущие переходы \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/experience-replay.jpg}{[оригинал]}}
+
+=\textgreater{} Благодаря этому агент может \textbf{обучаться на одних и тех же переходах многократно}.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+\textbf{Предотвращение забывания предыдущего опыта (катастрофической интерференции) и уменьшение корреляции между последовательными переходами}.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+\textbf{\href{https://en.wikipedia.org/wiki/Catastrophic_interference}{Катастрофическое забывание}}: если подавать нейронной сети последовательные переходы, она склонна \textbf{забывать предыдущий опыт по мере поступления нового}. Например, когда агент переходит с первого уровня игры на сильно отличающийся второй, он может забыть, как успешно проходить первый уровень.
+\end{itemize}
+
+Решение --- сохранять переходы при взаимодействии со средой в буфере Replay Buffer, а затем выбирать оттуда небольшие случайные пакеты. Это не позволяет \textbf{нейросети учиться исключительно на том, что агент делал непосредственно перед обновлением}.
+
+У воспроизведения опыта есть и другие преимущества. Случайная выборка уменьшает корреляции между последовательными наблюдениями и помогает предотвратить \textbf{сильные колебания или расходимость оценок ценности действий}.
+
+В псевдокоде Deep Q-Learning мы \textbf{создаём буфер памяти \(D\) вместимостью \(N\)} (\(N\) --- задаваемый гиперпараметр). Затем сохраняем в нём переходы и во время обучения выбираем из буфера пакет опыта для передачи в глубокую Q-сеть.
+
+\CourseFigure{experience-replay-pseudocode.jpg}{Псевдокод DQN: использование буфера воспроизведения опыта \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/experience-replay-pseudocode.jpg}{[оригинал]}}
+
+\subsection{Фиксированная целевая Q-сеть для стабилизации обучения}\label{fixed-q-target-to-stabilize-the-training}
+
+При вычислении ошибки временных разностей (TD error, то есть функции потерь) мы находим \textbf{разность между целевым TD-значением (Q-Target) и текущей оценкой Q-значения}.
+
+Однако \textbf{истинное целевое TD-значение нам неизвестно}, и его приходится оценивать. Из уравнения Беллмана следует, что цель равна вознаграждению за действие в текущем состоянии плюс дисконтированное максимальное Q-значение в следующем состоянии.
+
+\CourseFigure{Q-target.jpg}{Функция потерь Deep Q-Learning и целевое значение TD \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/Q-target.jpg}{[оригинал]}}
+
+Проблема в том, что для вычисления целевого TD-значения \textbf{и} текущей оценки Q мы используем одни и те же параметры (веса). Поэтому между целевым значением и изменяемыми параметрами возникает сильная взаимосвязь.
+
+Следовательно, на каждом шаге обучения \textbf{смещаются и наши Q-оценки, и целевые значения}. Мы приближаемся к цели, но она сама постоянно движется. Это похоже на погоню за движущейся мишенью и может вызывать значительные колебания процесса обучения.
+
+Представьте, что вы ковбой (текущая Q-оценка) и хотите поймать корову (целевое Q-значение). Ваша задача --- приблизиться к ней (уменьшить ошибку).
+
+\CourseFigure{qtarget-1.jpg}{Аналогия с движущейся целью: первый шаг обучения Q-функции \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-1.jpg}{[оригинал]}}
+
+На каждом временном шаге вы пытаетесь приблизиться к корове, но она тоже перемещается на каждом шаге (потому что используются одни и те же параметры).
+
+\CourseFigure{qtarget-2.jpg}{Движущаяся цель: смещение целевого значения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-2.jpg}{[оригинал]}}
+
+\CourseFigure{qtarget-3.jpg}{Движущаяся цель: последовательные изменения положения цели \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-3.jpg}{[оригинал]}}
+
+В результате траектория преследования становится странной и извилистой, что соответствует сильным колебаниям во время обучения.
+
+\CourseFigure{qtarget-4.jpg}{Движущаяся цель: колебания при обучении функции ценности \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-4.jpg}{[оригинал]}}
+
+Вместо этого, как видно из псевдокода, мы:
+
+\begin{itemize}
+\tightlist
+\item
+Используем \textbf{отдельную сеть с фиксированными параметрами} для оценки целевого TD-значения.
+\item
+\textbf{Копируем параметры основной глубокой Q-сети каждые \(C\) шагов}, обновляя целевую сеть.
+\end{itemize}
+
+\CourseFigure{fixed-q-target-pseudocode.jpg}{Псевдокод DQN: обновление фиксированной целевой сети \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/fixed-q-target-pseudocode.jpg}{[оригинал]}}
+
+\subsection{Двойная DQN (Double DQN)}\label{double-dqn}
+
+Алгоритм Double DQN, или двойное глубокое Q-обучение, предложил \href{https://papers.nips.cc/paper/3964-double-q-learning}{Хадо ван Хасселт}. Этот метод \textbf{решает проблему переоценки Q-значений}.
+
+Чтобы понять проблему, вспомним, как вычисляется целевое TD-значение:
+
+\CourseFigure{TD-1.jpg}{Цель TD и операция максимизации по Q-значениям \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-1.jpg}{[оригинал]}}
+
+При вычислении целевого TD-значения возникает простой вопрос: откуда мы знаем, что \textbf{лучшее действие для следующего состояния --- это именно действие с максимальным Q-значением}?
+
+Нам известно, что точность Q-оценок зависит и от того, \textbf{какие действия мы уже пробовали}, и от того, какие соседние состояния исследовали.
+
+Поэтому в начале обучения информации о действительно лучшем действии недостаточно. Если считать максимум зашумлённых Q-оценок лучшим действием, можно получить ложноположительные результаты. Когда неоптимальным действиям регулярно \textbf{приписываются более высокие Q-значения, чем действительно оптимальному действию}, обучение осложняется.
+
+Решение: при вычислении целевого Q-значения использовать две сети, чтобы разделить выбор действия и получение целевой оценки ценности. Для этого мы:
+
+\begin{itemize}
+\tightlist
+\item
+Используем \textbf{основную сеть DQN}, чтобы выбрать лучшее действие для следующего состояния (действие с наибольшим Q-значением).
+\item
+Используем \textbf{целевую сеть}, чтобы рассчитать целевое Q-значение выбранного действия в следующем состоянии.
+\end{itemize}
+
+Таким образом, Double DQN помогает уменьшить переоценку Q-значений и, как следствие, обеспечивает более быстрое и устойчивое обучение.
+
+Помимо трёх рассмотренных усовершенствований Deep Q-Learning существуют и другие, например Prioritized Experience Replay и Dueling Deep Q-Learning. Они выходят за рамки этого курса, но при желании вы можете изучить материалы по ссылкам из списка дополнительной литературы.
+
+\section{Практическое занятие}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit3/unit3.ipynb}{Открыть официальный ноутбук модуля 3 в Google Colab}
+
+\href{http://hf.co/join/discord}{Официальная помощь по курсу и Discord}
+
+Теперь, когда мы изучили теорию Deep Q-Learning, \textbf{вы готовы обучить агента играть в игры Atari}. Начнём со Space Invaders, но затем сможете выбрать любую другую игру Atari.
+
+\CourseFigure{atari-envs.png}{Примеры сред Atari, в которых можно обучать агентов \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[оригинал]}}
+
+Мы используем \href{https://github.com/DLR-RM/rl-baselines3-zoo}{интеграцию RL-Baselines3 Zoo}: обычную реализацию Deep Q-Learning без расширений Double-DQN, Dueling-DQN и Prioritized Experience Replay.
+
+Если после практики вы захотите \textbf{реализовать Deep Q-Learning самостоятельно}, обязательно посмотрите реализацию CleanRL: \url{https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/dqn_atari.py}
+
+Чтобы практическое задание засчиталось для сертификации, необходимо загрузить обученную модель в Hub и \textbf{получить результат не ниже 200}.
+
+Чтобы узнать результат, найдите модель в таблице лидеров: \textbf{результат = mean\_reward - std вознаграждения}.
+
+\textbf{Если модели нет в списке, прокрутите страницу вниз и нажмите кнопку обновления.}
+
+Подробнее о сертификации см. в \href{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}{соответствующем разделе курса}.
+
+А здесь можно \href{https://huggingface.co/spaces/ThomasSimonini/Check-my-progress-Deep-RL-Course}{проверить собственный прогресс}.
+
+\textbf{Чтобы начать практику, нажмите кнопку «Open In Colab»:}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit3/unit3.ipynb}{Открыть в Colab}
+
+\subsection{Модуль 3: Deep Q-Learning в играх Atari (Space Invaders) с помощью RL Baselines3 Zoo}\label{unit-3-deep-q-learning-with-atari-games-space-invaders-using-rl-baselines3-zoo}
+
+\CourseFigure{thumbnail.jpg}{Обложка модуля 3: глубокое Q-обучение \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/thumbnail.jpg}{[оригинал]}}
+
+В этой практической работе \textbf{вы обучите агента Deep Q-Learning играть в Space Invaders} с помощью \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL Baselines3 Zoo} --- инструментария на основе \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable-Baselines3}, содержащего скрипты для обучения и оценки агентов, настройки гиперпараметров, построения графиков и записи видео.
+
+Мы используем \href{https://stable-baselines3.readthedocs.io/en/master/modules/dqn.html}{интеграцию RL-Baselines3 Zoo с базовой реализацией Deep Q-Learning} без таких расширений, как Double-DQN, Dueling-DQN и Prioritized Experience Replay.
+
+\paragraph{Игровые среды}\label{game-environments}
+
+\begin{itemize}
+\tightlist
+\item
+\href{https://gymnasium.farama.org/environments/atari/space_invaders/}{SpacesInvadersNoFrameskip-v4}
+\end{itemize}
+
+Различия между версиями Space Invaders описаны \href{https://gymnasium.farama.org/environments/atari/space_invaders/#variants}{здесь}.
+
+\paragraph{Библиотека RL для изучения}\label{reading-rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+\href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL-Baselines3-Zoo}
+\end{itemize}
+
+\subsubsection{Цели практического занятия}\label{objectives-of-this-hands-on}
+
+После выполнения работы вы сможете:
+
+\begin{itemize}
+\tightlist
+\item
+Глубже понять, \textbf{как работает RL Baselines3 Zoo}.
+\item
+\textbf{Загрузить обученного агента и код в Hugging Face Hub} вместе с красивой видеозаписью игры и результатами оценки.
+\end{itemize}
+
+\subsubsection{Предварительные требования}\label{prerequisites}
+
+Перед выполнением практического задания необходимо:
+
+[Чтение] \textbf{\href{https://huggingface.co/deep-rl-course/unit3/introduction}{Изучить теорию Deep Q-Learning из модуля 3}}.
+
+Мы постоянно улучшаем наши руководства. Поэтому, \textbf{если вы заметили проблему в практическом задании}, пожалуйста, \href{https://github.com/huggingface/deep-rl-class/issues}{создайте issue в репозитории GitHub}.
+
+\subsection{Обучим агента Deep Q-Learning играть в Atari Space Invaders и загрузим его в Hub}\label{lets-train-a-deep-q-learning-agent-playing-atari-space-invaders-space-invaders-and-upload-it-to-the-hub.}
+
+Мы настоятельно рекомендуем студентам \textbf{выполнять практические задания в Google Colab, а не на личных компьютерах}.
+
+Используя Google Colab, \textbf{можно сосредоточиться на обучении и экспериментах, не отвлекаясь на технические вопросы настройки окружения}.
+
+Чтобы практическое задание засчиталось для сертификации, нужно загрузить обученную модель в Hub и \textbf{получить результат не ниже 200}.
+
+Чтобы найти результат, откройте таблицу лидеров и найдите модель. \textbf{Результат вычисляется как mean\_reward минус стандартное отклонение вознаграждения}.
+
+Подробнее о сертификации см. \href{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}{в разделе курса}.
+
+\subsubsection{Настройка GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+Чтобы \textbf{ускорить обучение агента, воспользуемся GPU}. В Colab выберите \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}.
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Google Colab: изменение типа среды выполнения \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+\texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Google Colab: выбор ускорителя GPU \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[оригинал]}}
+
+\subsection{Установка RL-Baselines3 Zoo и зависимостей (материал для чтения)}\label{install-rl-baselines3-zoo-and-its-dependencies-reading}
+
+Если появится сообщение \texttt{ERROR:\ pip\textquotesingle{}s\ dependency\ resolver\ does\ not\ currently\ take\ into\ account\ all\ the\ packages\ that\ are\ installed.}, \textbf{это нормально и не является критической ошибкой}: возник конфликт версий, но необходимые нам пакеты установлены.
+
+\begin{lstlisting}
+# For now we install this update of RL-Baselines3 Zoo
+pip install git+https://github.com/DLR-RM/rl-baselines3-zoo
+\end{lstlisting}
+
+\begin{lstlisting}
+apt-get install swig cmake ffmpeg
+\end{lstlisting}
+
+Для игр Atari в Gymnasium необходимо установить пакет поддержки Atari. Кроме того, нужно принять лицензию ROM-файлов с играми с помощью пакета \texttt{accept-rom-license}.
+
+\begin{lstlisting}
+!pip install gymnasium[atari]
+!pip install gymnasium[accept-rom-license]
+\end{lstlisting}
+
+\subsubsection{Создание виртуального дисплея}\label{create-a-virtual-display}
+
+Во время практики понадобится записать видео игры. Если обучение выполняется на компьютере без монитора (headless), \textbf{необходимо создать виртуальный экран, чтобы среда могла отрисовывать кадры} и их можно было записать.
+
+Следующая ячейка устанавливает библиотеки, создаёт виртуальный экран и запускает его.
+
+\begin{lstlisting}
+apt install python-opengl
+apt install ffmpeg
+apt install xvfb
+pip3 install pyvirtualdisplay
+\end{lstlisting}
+
+\begin{lstlisting}
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsubsection{Обучение агента Deep Q-Learning игре Space Invaders}\label{train-our-deep-q-learning-agent-to-play-space-invaders-space-invaders}
+
+Чтобы обучить агента с помощью RL-Baselines3-Zoo, достаточно сделать две вещи:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+Создать файл конфигурации гиперпараметров обучения с именем \texttt{dqn.yml}.
+\end{enumerate}
+
+Вот пример шаблона:
+
+\begin{lstlisting}
+SpaceInvadersNoFrameskip-v4:
+  env_wrapper:
+    - stable_baselines3.common.atari_wrappers.AtariWrapper
+  frame_stack: 4
+  policy: 'CnnPolicy'
+  n_timesteps: !!float 1e7
+  buffer_size: 100000
+  learning_rate: !!float 1e-4
+  batch_size: 32
+  learning_starts: 100000
+  target_update_interval: 1000
+  train_freq: 4
+  gradient_steps: 1
+  exploration_fraction: 0.1
+  exploration_final_eps: 0.01
+  # If True, you need to deactivate handle_timeout_termination
+  # in the replay_buffer_kwargs
+  optimize_memory_usage: False
+\end{lstlisting}
+
+Здесь можно увидеть следующее:
+
+\begin{itemize}
+\tightlist
+\item
+Мы используем \texttt{Atari\ Wrapper}, который предобрабатывает вход (уменьшает изображение, переводит в оттенки серого и объединяет четыре кадра).
+\item
+Мы используем \texttt{CnnPolicy}, поскольку обработку кадров выполняют свёрточные слои.
+\item
+Обучаем агента на протяжении 10 миллионов временных шагов (\texttt{n\_timesteps}).
+\item
+Размер буфера Experience Replay составляет 100000 --- столько переходов сохраняется для последующего повторного обучения агента.
+\end{itemize}
+
+Совет: рекомендую \textbf{уменьшить число шагов обучения до одного миллиона}. На GPU P100 это займёт около 90 минут. Команда \texttt{!nvidia-smi} покажет, какой GPU у вас используется. На 10 миллионов шагов потребуется около девяти часов. Такое обучение лучше выполнять на собственном компьютере или другой машине. Для скачивания ноутбука выберите \texttt{File\textgreater{}Download}.
+
+При оптимизации гиперпараметров рекомендую сосредоточиться на трёх параметрах:
+
+\begin{itemize}
+\tightlist
+\item
+\texttt{learning\_rate}
+\item
+\texttt{buffer\_size} (размер памяти опыта)
+\item
+\texttt{batch\_size}
+\end{itemize}
+
+Полезная привычка --- \textbf{сверяться с документацией и понимать назначение каждого гиперпараметра}: \url{https://stable-baselines3.readthedocs.io/en/master/modules/dqn.html#parameters}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+Начинаем обучение и сохраняем модели в папку \texttt{logs}.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+Указываем алгоритм после \texttt{-{}-algo}, папку сохранения модели после \texttt{-f}, а файл конфигурации гиперпараметров после \texttt{-c}.
+\end{itemize}
+
+\begin{lstlisting}
+python -m rl_zoo3.train --algo ________ --env SpaceInvadersNoFrameskip-v4  -f _________  -c _________
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution}
+
+\begin{lstlisting}
+python -m rl_zoo3.train --algo dqn  --env SpaceInvadersNoFrameskip-v4 -f logs/ -c dqn.yml
+\end{lstlisting}
+
+\subsubsection{Оценим нашего агента}\label{lets-evaluate-our-agent}
+
+\begin{itemize}
+\tightlist
+\item
+RL-Baselines3-Zoo предоставляет \texttt{enjoy.py} --- Python-скрипт для оценки агента. Во многих библиотеках RL скрипт оценки называется именно \texttt{enjoy.py}.
+\item
+Оценим его на протяжении 5000 временных шагов.
+\end{itemize}
+
+\begin{lstlisting}
+python -m rl_zoo3.enjoy  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --no-render  --n-timesteps _________  --folder logs/
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution-1}
+
+\begin{lstlisting}
+python -m rl_zoo3.enjoy  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --no-render  --n-timesteps 5000  --folder logs/
+\end{lstlisting}
+
+\subsubsection{Публикация обученной модели в Hub}\label{publish-our-trained-model-on-the-hub}
+
+Убедившись, что после обучения получены хорошие результаты, мы можем опубликовать обученную модель в Hub одной строкой кода.
+
+\CourseFigure{space-invaders-model.png}{Демонстрация обученного агента Space Invaders (первый кадр) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit3/space-invaders-model.gif}{[оригинал]}}
+
+Команда \texttt{rl\_zoo3.push\_to\_hub} \textbf{проводит оценку, записывает видео, создаёт карточку модели и загружает агента в Hub}.
+
+Таким образом, вы сможете:
+
+\begin{itemize}
+\tightlist
+\item
+\textbf{Показать результаты своей работы}.
+\item
+\textbf{Посмотреть на игру обученного агента}.
+\item
+\textbf{Поделиться с сообществом агентом, которым смогут пользоваться другие}.
+\item
+\textbf{Сравнить результаты агента с результатами других участников в таблице лидеров}: \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}
+\end{itemize}
+
+Для публикации модели в сообществе осталось выполнить ещё три шага:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+Если аккаунта ещё нет, создайте его на Hugging Face: \url{https://huggingface.co/join}
+\item
+Войдите в аккаунт, затем сохраните токен аутентификации, полученный на сайте Hugging Face.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+Создайте новый токен (\url{https://huggingface.co/settings/tokens}) \textbf{с правом записи (write)}.
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Создание токена доступа Hugging Face \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[оригинал]}}
+
+\begin{itemize}
+\tightlist
+\item
+Скопируйте токен.
+\item
+Запустите следующую ячейку и вставьте токен.
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login # To log to our Hugging Face account to be able to upload models to the Hub.
+notebook_login()
+!git config --global credential.helper store
+\end{lstlisting}
+
+Если вы не используете Google Colab или Jupyter Notebook, вместо этого необходимо выполнить команду \texttt{huggingface-cli\ login}.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+Теперь всё готово для отправки обученного агента в Hub.
+\end{enumerate}
+
+Запустим файл \texttt{push\_to\_hub.py}, чтобы загрузить обученного агента в Hub.
+
+\texttt{-{}-repo-name}: название репозитория.
+
+\texttt{-orga}: ваше имя пользователя на Hugging Face.
+
+\texttt{-f}: папка, в которой находится обученная модель (в нашем случае \texttt{logs}).
+
+\CourseFigure{select-id.png}{Выбор каталога с обученной моделью для публикации \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit3/select-id.png}{[оригинал]}}
+
+\begin{lstlisting}
+python -m rl_zoo3.push_to_hub  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --repo-name _____________________ -orga _____________________ -f logs/
+\end{lstlisting}
+
+\subparagraph{Решение}\label{solution-2}
+
+\begin{lstlisting}
+python -m rl_zoo3.push_to_hub  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --repo-name dqn-SpaceInvadersNoFrameskip-v4  -orga ThomasSimonini  -f logs/
+\end{lstlisting}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Поздравляем: вы только что обучили и загрузили своего первого агента Deep Q-Learning с помощью RL-Baselines3 Zoo! Скрипт выше должен был вывести ссылку на репозиторий модели, например \url{https://huggingface.co/ThomasSimonini/dqn-SpaceInvadersNoFrameskip-v4}. Перейдя по ссылке, вы сможете:
+
+\begin{itemize}
+\tightlist
+\item
+Увидеть \textbf{предпросмотр видео с игрой агента} справа.
+\item
+Нажать «Files and versions» и просмотреть все файлы репозитория.
+\item
+Нажать «Use in stable-baselines3», чтобы получить пример кода для загрузки модели.
+\item
+Просмотреть карточку модели (файл \texttt{README.md}) с её описанием и гиперпараметрами обучения.
+\end{itemize}
+
+В основе Hub лежат репозитории Git (не беспокойтесь, если вы ещё не знакомы с Git). Поэтому можно публиковать новые версии модели по мере проведения экспериментов и улучшения агента.
+
+\textbf{Сравните результаты своих агентов с результатами других участников} в \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров}.
+
+\subsubsection{Загрузка хорошо обученной модели}\label{load-a-powerful-trained-model}
+
+\begin{itemize}
+\tightlist
+\item
+Команда Stable-Baselines3 опубликовала в Hub \textbf{более 150 обученных агентов глубокого обучения с подкреплением}.
+\end{itemize}
+
+Найти их можно здесь: \url{https://huggingface.co/sb3}
+
+Несколько примеров:
+
+\begin{itemize}
+\tightlist
+\item
+Asteroids: \url{https://huggingface.co/sb3/dqn-AsteroidsNoFrameskip-v4}
+\item
+Beam Rider: \url{https://huggingface.co/sb3/dqn-BeamRiderNoFrameskip-v4}
+\item
+Breakout: \url{https://huggingface.co/sb3/dqn-BreakoutNoFrameskip-v4}
+\item
+Road Runner: \url{https://huggingface.co/sb3/dqn-RoadRunnerNoFrameskip-v4}
+\end{itemize}
+
+Загрузим агента, играющего в Beam Rider. Его модель размещена здесь: \url{https://huggingface.co/sb3/dqn-BeamRiderNoFrameskip-v4}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+Скачаем модель с помощью \texttt{rl\_zoo3.load\_from\_hub} и поместим в новую папку, которую назовём \texttt{rl\_trained}.
+\end{enumerate}
+
+\begin{lstlisting}
+# Download model and save it into the logs/ folder
+python -m rl_zoo3.load_from_hub --algo dqn --env BeamRiderNoFrameskip-v4 -orga sb3 -f rl_trained/
+\end{lstlisting}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+Оценим модель на протяжении 5000 временных шагов.
+\end{enumerate}
+
+\begin{lstlisting}
+python -m rl_zoo3.enjoy --algo dqn --env BeamRiderNoFrameskip-v4 -n 5000  -f rl_trained/ --no-render
+\end{lstlisting}
+
+Почему бы не попробовать самостоятельно обучить \textbf{агента Deep Q-Learning} для игры Beam Rider (\texttt{BeamRiderNoFrameskip-v4})?
+
+Если захотите попробовать, изучите карточку обученной модели: \url{https://huggingface.co/sb3/dqn-BeamRiderNoFrameskip-v4#hyperparameters}\par\noindent \textbf{В ней приведены использованные гиперпараметры обучения}.
+
+Однако подбор гиперпараметров бывает непростой задачей. К счастью, в следующем модуле мы увидим, как \textbf{использовать Optuna для оптимизации гиперпараметров}.
+
+\subsubsection{Дополнительные задания}\label{some-additional-challenges}
+
+Лучший способ учиться --- \textbf{пробовать всё самостоятельно}!
+
+В \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{таблице лидеров} вы найдёте своих агентов. Сможете ли вы подняться на первую строчку?
+
+Вот несколько сред, в которых можно попробовать обучить агента:
+
+\begin{itemize}
+\tightlist
+\item
+BeamRiderNoFrameskip-v4
+\item
+BreakoutNoFrameskip-v4
+\item
+EnduroNoFrameskip-v4
+\item
+PongNoFrameskip-v4
+\end{itemize}
+
+Если вы хотите \textbf{самостоятельно реализовать Deep Q-Learning}, обязательно ознакомьтесь с реализацией CleanRL: \url{https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/dqn_atari.py}
+
+\CourseFigure{atari-envs.png}{Примеры сред Atari, в которых можно обучать агентов \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[оригинал]}}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Поздравляем с завершением этой главы!
+
+Если некоторые понятия до сих пор остаются непонятными\ldots{} это совершенно нормально! \textbf{Так было и у меня, и у всех, кто изучал обучение с подкреплением}.
+
+Прежде чем двигаться дальше, уделите время тому, чтобы \textbf{по-настоящему разобраться в материале и попробовать дополнительные задания}. Важно хорошо освоить эти идеи и сформировать прочную основу.
+
+В следующем модуле \textbf{мы познакомимся с \href{https://optuna.org/}{Optuna}}. Одна из самых важных задач глубокого обучения с подкреплением --- подобрать хорошие гиперпараметры обучения. Библиотека Optuna помогает автоматизировать их поиск.
+
+\paragraph{Этот курс создаётся вместе с вами}\label{this-is-a-course-built-with-you}
+
+Мы хотим постоянно улучшать и обновлять курс с учётом ваших отзывов. Если есть предложения, заполните, пожалуйста, \href{https://forms.gle/3HgA7bEHwAmmLfwh9}{эту форму}.
+
+Мы постоянно улучшаем наши руководства, поэтому \textbf{если вы заметили ошибку в ноутбуке}, \href{https://github.com/huggingface/deep-rl-class/issues}{создайте issue в GitHub-репозитории}.
+
+Увидимся во втором бонусном модуле!
+
+\paragraph{Продолжайте учиться, оставайтесь замечательными!}\label{keep-learning-stay-awesome}
+
+\section{Проверка знаний}\label{quiz}
+
+Лучший способ учиться и \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{избегать иллюзии компетентности} --- \textbf{проверять себя}. Так вы поймёте, \textbf{какие темы необходимо повторить}.
+
+\subsubsection{Вопрос 1. Мы называли Q-обучение табличным методом. Что такое табличные методы?}\label{q1-we-mentioned-q-learning-is-a-tabular-method.-what-are-tabular-methods}
+
+\subsubsection{Вопрос 2. Почему классическое Q-обучение не подходит для решения игр Atari?}\label{q2-why-cant-we-use-a-classical-q-learning-to-solve-an-atari-game}
+
+\begin{itemize}
+\tightlist
+\item
+\textbf{A.} Среды Atari слишком быстрые для Q-обучения.
+\item
+\textbf{B.} В средах Atari огромное пространство наблюдений, поэтому создавать и обновлять Q-таблицу было бы неэффективно.
+\end{itemize}
+
+\subsubsection{Вопрос 3. Почему при использовании изображений в Deep Q-Learning мы объединяем четыре последовательных кадра?}\label{q3-why-do-we-stack-four-frames-together-when-we-use-frames-as-input-in-deep-q-learning}
+
+\subsubsection{Вопрос 4. Какие две фазы есть в Deep Q-Learning?}\label{q4-what-are-the-two-phases-of-deep-q-learning}
+
+\begin{itemize}
+\tightlist
+\item
+\textbf{A.} Сбор опыта (sampling).
+\item
+\textbf{B.} Перемешивание (shuffling).
+\item
+\textbf{C.} Повторное ранжирование (reranking).
+\item
+\textbf{D.} Обучение (training).
+\end{itemize}
+
+\subsubsection{Вопрос 5. Зачем в Deep Q-Learning нужна память воспроизведения опыта?}\label{q5-why-do-we-create-a-replay-memory-in-deep-q-learning}
+
+\subsubsection{Вопрос 6. Как работает Double Deep Q-Learning?}\label{q6-how-do-we-use-double-deep-q-learning}
+
+Поздравляем с завершением теста! Если какие-то вопросы оказались сложными, перечитайте соответствующие разделы, чтобы закрепить знания.
+
+\subsection{Ответы на вопросы и пояснения}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Ответ на вопрос 1}\label{q1-solution}
+
+\emph{Табличные методы} применимы к задачам, в которых пространства состояний и действий достаточно малы, чтобы аппроксимированные функции ценности можно было \textbf{представить массивами и таблицами}. Например, \textbf{Q-обучение --- табличный метод}, поскольку для хранения ценностей пар «состояние--действие» используется таблица.
+
+\subsubsection{Ответ на вопрос 2}\label{q2-solution}
+
+\textbf{Правильный ответ:} B.
+
+\textbf{A.} Среды Atari слишком быстрые для Q-обучения.
+
+\textbf{B.} В средах Atari огромное пространство наблюдений, поэтому создавать и обновлять Q-таблицу было бы неэффективно.
+
+\subsubsection{Ответ на вопрос 3}\label{q3-solution}
+
+Мы объединяем кадры, чтобы \textbf{решить проблему нехватки временной информации}: по одному кадру невозможно определить движение. Например, в Pong агент \textbf{не сможет понять направление движения мяча, если получит только один кадр}.
+
+\CourseFigure{temporal-limitation.jpg}{По одному кадру Pong нельзя определить скорость и направление движения мяча \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation.jpg}{[оригинал]}}
+
+\CourseFigure{temporal-limitation-2.jpg}{Несколько последовательных кадров Pong позволяют определить направление мяча \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation-2.jpg}{[оригинал]}}
+
+\subsubsection{Ответ на вопрос 4}\label{q4-solution}
+
+\textbf{Правильные ответы:} A и D.
+
+\textbf{A.} Сбор опыта. Пояснение: агент совершает действия и сохраняет наблюдаемые переходы в памяти воспроизведения.
+
+\textbf{B.} Перемешивание.
+
+\textbf{C.} Повторное ранжирование.
+
+\textbf{D.} Обучение. Пояснение: случайным образом выбираем небольшой пакет переходов и обучаемся на нём, обновляя веса градиентным спуском.
+
+\subsubsection{Ответ на вопрос 5}\label{q5-solution}
+
+\textbf{1. Более эффективное использование опыта во время обучения.}
+
+При обычном онлайн-обучении с подкреплением агент взаимодействует со средой, получает переходы (состояние, действие, вознаграждение и следующее состояние), учится на них, обновляя нейронную сеть, а затем отбрасывает. Это неэффективно. При Experience Replay \textbf{создаётся буфер, в котором хранятся переходы, пригодные для повторного использования во время обучения}.
+
+\textbf{2. Предотвращение забывания и уменьшение корреляции между переходами.}
+
+При последовательной подаче переходов нейронная сеть \textbf{склонна забывать прежний опыт по мере запоминания нового}. Например, если после первого уровня агент попадает на сильно отличающийся второй, он может забыть, как правильно играть на первом уровне.
+
+\subsubsection{Ответ на вопрос 6}\label{q6-solution}
+
+При вычислении целевого Q-значения мы используем две сети, чтобы разделить выбор действия и формирование целевого значения. Для этого мы:
+
+\begin{itemize}
+\item
+Используем \emph{основную сеть DQN}, чтобы \textbf{выбрать лучшее действие для следующего состояния} (действие с максимальным Q-значением).
+\item
+Используем \emph{целевую сеть}, чтобы \textbf{рассчитать целевое Q-значение выбранного действия в следующем состоянии}.
+\end{itemize}
+
+\section{Заключение}\label{conclusion}
+
+Поздравляем с завершением главы! В ней было много информации. Поздравляем также с завершением практического занятия: вы только что обучили своего первого агента Deep Q-Learning и опубликовали его в Hub.
+
+Прежде чем двигаться дальше, выделите время на то, чтобы хорошо усвоить материал.
+
+Не бойтесь обучать агента в других средах (Pong, Seaquest, QBert, Ms Pac Man). \textbf{Лучший способ научиться --- пробовать всё самостоятельно!}
+
+\CourseFigure{atari-envs.png}{Примеры сред Atari, в которых можно обучать агентов \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[оригинал]}}
+
+В следующем модуле \textbf{мы познакомимся с Optuna}. Одна из важнейших задач глубокого обучения с подкреплением --- подбор хорошего набора гиперпараметров. Библиотека Optuna помогает автоматизировать их поиск.
+
+Нам также очень важно \textbf{услышать, что вы думаете о курсе и как его можно улучшить}. Если есть отзывы, пожалуйста, \href{https://forms.gle/BzKXWzLAGZESGNaE9}{заполните эту форму}.
+
+\subsubsection{Продолжайте учиться и оставайтесь замечательными!}\label{keep-learning-stay-awesome-1}
+
+\section{Глоссарий}\label{glossary}
+
+Этот глоссарий создан сообществом. Мы рады новым предложениям и дополнениям!
+
+\begin{itemize}
+\item
+\textbf{Табличный метод (Tabular Method):} подход для задач с достаточно небольшими пространствами состояний и действий, позволяющими представлять аппроксимированные функции ценности массивами и таблицами. Например, \textbf{Q-обучение} --- табличный метод, так как для хранения ценности различных пар «состояние--действие» используется таблица.
+\item
+\textbf{Глубокое Q-обучение (Deep Q-Learning):} метод, обучающий нейронную сеть аппроксимировать \textbf{Q-значения} всех возможных действий по текущему состоянию. Он применяется, когда пространство наблюдений слишком велико для табличного Q-обучения.
+\item
+\textbf{Проблема временной информации (Temporal Limitation):} трудность, возникающая, когда состояние среды представлено отдельными изображениями. Один кадр не передаёт информацию о движении. Чтобы получить её, необходимо \textbf{объединить в стек} несколько последовательных кадров.
+\item
+\textbf{Фазы Deep Q-Learning:}
+
+  \begin{itemize}
+  \tightlist
+  \item
+\textbf{Сбор опыта (Sampling):} агент совершает действия, а полученные переходы сохраняются в \textbf{буфере воспроизведения опыта}.
+  \item
+\textbf{Обучение (Training):} случайным образом выбираются пакеты переходов, и нейросеть обновляет веса с помощью градиентного спуска.
+  \end{itemize}
+\item
+\textbf{Способы стабилизации Deep Q-Learning:}
+
+  \begin{itemize}
+  \item
+\textbf{Воспроизведение опыта (Experience Replay):} создаётся память переходов, которые можно повторно использовать во время обучения. Благодаря этому агент многократно учится на одном и том же опыте. Кроме того, это помогает не забывать прежние переходы по мере поступления новых.
+  \item
+\textbf{Случайная выборка} из буфера уменьшает корреляцию между последовательными наблюдениями и предотвращает сильные колебания или расходимость ценностей действий.
+  \item
+\textbf{Фиксированная целевая Q-сеть (Fixed Q-Target):} для вычисления \textbf{целевого Q-значения} с помощью уравнения Беллмана необходимо оценить дисконтированную оптимальную \textbf{Q-ценность} следующего состояния. Проблема в том, что для вычисления \textbf{Q-Target} и текущей \textbf{Q-оценки} используются одни и те же веса сети. Поэтому при каждом изменении \textbf{Q-оценки} смещается и \textbf{цель}. Чтобы избежать этого, для оценки целевого значения временных разностей применяется отдельная сеть с фиксированными параметрами. Её обновляют, копируя веса основной DQN через определённое число \textbf{шагов \(C\)}.
+  \item
+\textbf{Double DQN:} метод борьбы с \textbf{переоценкой Q-значений}. В нём применяются две сети, позволяющие разделить выбор действия и вычисление целевого \textbf{значения ценности}:
+
+    \begin{itemize}
+    \tightlist
+    \item
+\textbf{Основная сеть DQN} выбирает лучшее действие в следующем состоянии (с максимальным \textbf{Q-значением}).
+    \item
+\textbf{Целевая сеть} вычисляет целевое \textbf{Q-значение} выбранного действия в следующем состоянии. Такой подход уменьшает переоценку Q-значений, ускоряет обучение и делает его более устойчивым.
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+
+Если вы хотите улучшить курс, можете \href{https://github.com/huggingface/deep-rl-class/pulls}{создать Pull Request}.
+
+Создание этого глоссария стало возможным благодаря:
+
+\begin{itemize}
+\tightlist
+\item
+\href{https://github.com/dario248}{Дарио Паэсу (Dario Paez)}.
+\end{itemize}
+
+\section{Дополнительная литература}\label{additional-readings}
+
+Эти материалы \textbf{необязательны}, но помогут глубже разобраться в теме.
+
+\begin{itemize}
+\tightlist
+\item
+\href{https://youtu.be/Psrhxy88zww}{Серия Foundations of Deep RL, лекция 2 «Deep Q-Learning», Питер Аббил}
+\item
+\href{https://arxiv.org/abs/1312.5602}{Игра в Atari с глубоким обучением с подкреплением (Playing Atari with Deep Reinforcement Learning)}
+\item
+\href{https://papers.nips.cc/paper/2010/hash/091d584fced301b442654dd8c23b3fc9-Abstract.html}{Двойное глубокое Q-обучение (Double Deep Q-Learning)}
+\item
+\href{https://arxiv.org/abs/1511.05952}{Приоритизированное воспроизведение опыта (Prioritized Experience Replay)}
+\item
+\href{https://arxiv.org/abs/1511.06581}{Дуэльное глубокое Q-обучение (Dueling Deep Q-Learning)}
+\end{itemize}
+
+\end{document}

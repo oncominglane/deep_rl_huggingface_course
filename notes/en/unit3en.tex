@@ -1,0 +1,905 @@
+% !TEX program = pdflatex
+% Hugging Face Deep RL Course - Unit 3 (faithful local study edition).
+% Compile from notes/en/: latexmk -pdf unit3en.tex; uses shared preamble.tex.
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\graphicspath{{../assets/unit3/}}
+% The shared preamble has a Unit 1 label: override the unit-specific running header.
+\fancyhead[L]{\footnotesize\sffamily\color{secondary}HF Deep RL Course \enspace/\enspace Unit 3}
+\fancyhead[R]{\footnotesize\sffamily\color{secondary}Deep Q-Learning}
+\title{\textbf{Deep Reinforcement Learning}\\[0.35em]\large Unit 3: Deep Q-Learning}
+\author{Hugging Face Deep RL Course\\\small Complete MDX-to-\LaTeX{} study edition}
+\date{}
+\begin{document}
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Source: Hugging Face Deep RL Course (original English text).\end{center}
+\tableofcontents
+\vspace{1em}
+\clearpage
+
+\section{Deep Q-Learning}\label{deep-q-learning}
+
+\CourseFigure{thumbnail.jpg}{Deep Q-Learning: Unit 3 course cover \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/thumbnail.jpg}{[original figure]}}
+
+In the last unit, we learned our first reinforcement learning algorithm: Q-Learning, \textbf{implemented it from scratch}, and trained it in two environments, FrozenLake-v1 (snow) and Taxi-v3 (taxi).
+
+We got excellent results with this simple algorithm, but these environments were relatively simple because the \textbf{state space was discrete and small} (16 different states for FrozenLake-v1 and 500 for Taxi-v3). For comparison, the state space in Atari games can \textbf{contain \(10^{9}\) to \(10^{11}\) states}.
+
+But as we'll see, producing and updating a \textbf{Q-table can become ineffective in large state space environments.}
+
+So in this unit, \textbf{we'll study our first Deep Reinforcement Learning agent}: Deep Q-Learning. Instead of using a Q-table, Deep Q-Learning uses a Neural Network that takes a state and approximates Q-values for each action based on that state.
+
+And \textbf{we'll train it to play Space Invaders and other Atari environments using \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL-Zoo}}, a training framework for RL using Stable-Baselines that provides scripts for training, evaluating agents, tuning hyperparameters, plotting results, and recording videos.
+
+\CourseFigure{atari-envs.png}{Examples of Atari environments available for training \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[original animation]}}
+
+So let's get started!
+
+\section{From Q-Learning to Deep Q-Learning}\label{from-q-learning-to-deep-q-learning}
+
+We learned that \textbf{Q-Learning is an algorithm we use to train our Q-Function}, an \textbf{action-value function} that determines the value of being at a particular state and taking a specific action at that state.
+
+\CourseFigure{Q-function.jpg}{Tabular Q-function: state-action values \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/Q-function.jpg}{[original figure]}}
+
+The \textbf{Q comes from ``the Quality'' of that action at that state.}
+
+Internally, our Q-function is encoded by \textbf{a Q-table, a table where each cell corresponds to a state-action pair value.} Think of this Q-table as \textbf{the memory or cheat sheet of our Q-function.}
+
+The problem is that Q-Learning is a \emph{tabular method}. This becomes a problem if the states and actions spaces \textbf{are not small enough to be represented efficiently by arrays and tables}. In other words: it is \textbf{not scalable}. Q-Learning worked well with small state space environments like:
+
+\begin{itemize}
+\tightlist
+\item
+  FrozenLake, we had 16 states.
+\item
+  Taxi-v3, we had 500 states.
+\end{itemize}
+
+But think of what we're going to do today: we will train an agent to learn to play Space Invaders, a more complex game, using the frames as input.
+
+As \textbf{\href{https://twitter.com/meln1k}{Nikita Melkozerov mentioned}, Atari environments} have an observation space with a shape of (210, 160, 3)*, containing values ranging from 0 to 255 so that gives us \(256^{210 \times 160 \times 3} = 256^{100800}\) possible observations (for comparison, we have approximately \(10^{80}\) atoms in the observable universe).
+
+\begin{itemize}
+\tightlist
+\item
+  A single frame in Atari is composed of an image of 210x160 pixels. Given that the images are in color (RGB), there are 3 channels. This is why the shape is (210, 160, 3). For each pixel, the value can go from 0 to 255.
+\end{itemize}
+
+\CourseFigure{atari.jpg}{Large Atari image-based observation space \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari.jpg}{[original figure]}}
+
+Therefore, the state space is gigantic; due to this, creating and updating a Q-table for that environment would not be efficient. In this case, the best idea is to approximate the Q-values using a parametrized Q-function \(Q_{\theta}(s,a)\) .
+
+This neural network will approximate, given a state, the different Q-values for each possible action at that state. And that's exactly what Deep Q-Learning does.
+
+\CourseFigure{deep.jpg}{A neural network approximates action values instead of a Q-table \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/deep.jpg}{[original figure]}}
+
+Now that we understand Deep Q-Learning, let's dive deeper into the Deep Q-Network.
+
+\section{The Deep Q-Network (DQN)}\label{the-deep-q-network-dqn}
+
+This is the architecture of our Deep Q-Learning network:
+
+\CourseFigure{deep-q-network.jpg}{Deep Q-Network architecture: stacked frames and action values \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/deep-q-network.jpg}{[original figure]}}
+
+As input, we take a \textbf{stack of 4 frames} passed through the network as a state and output a \textbf{vector of Q-values for each possible action at that state}. Then, like with Q-Learning, we just need to use our epsilon-greedy policy to select which action to take.
+
+When the Neural Network is initialized, \textbf{the Q-value estimation is terrible}. But during training, our Deep Q-Network agent will associate a situation with the appropriate action and \textbf{learn to play the game well}.
+
+\subsection{Preprocessing the input and temporal limitation}\label{preprocessing-the-input-and-temporal-limitation}
+
+We need to \textbf{preprocess the input}. It's an essential step since we want to \textbf{reduce the complexity of our state to reduce the computation time needed for training}.
+
+To achieve this, we \textbf{reduce the state space to 84x84 and grayscale it}. We can do this since the colors in Atari environments don't add important information. This is a big improvement since we \textbf{reduce our three color channels (RGB) to 1}.
+
+We can also \textbf{crop a part of the screen in some games} if it does not contain important information. Then we stack four frames together.
+
+\CourseFigure{preprocessing.jpg}{Atari observation preprocessing and frame stacking \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/preprocessing.jpg}{[original figure]}}
+
+\textbf{Why do we stack four frames together?} We stack frames together because it helps us \textbf{handle the problem of temporal limitation}. Let's take an example with the game of Pong. When you see this frame:
+
+\CourseFigure{temporal-limitation.jpg}{A single Pong frame does not reveal ball velocity \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation.jpg}{[original figure]}}
+
+Can you tell me where the ball is going? No, because one frame is not enough to have a sense of motion! But what if I add three more frames? \textbf{Here you can see that the ball is going to the right}.
+
+\CourseFigure{temporal-limitation-2.jpg}{Several consecutive Pong frames reveal ball direction \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation-2.jpg}{[original figure]}}
+
+That's why, to capture temporal information, we stack four frames together.
+
+Then the stacked frames are processed by three convolutional layers. These layers \textbf{allow us to capture and exploit spatial relationships in images}. But also, because the frames are stacked together, \textbf{we can exploit some temporal properties across those frames}.
+
+If you don't know what convolutional layers are, don't worry. You can check out \href{https://www.udacity.com/course/deep-learning-pytorch--ud188}{Lesson 4 of this free Deep Learning Course by Udacity}
+
+Finally, we have a couple of fully connected layers that output a Q-value for each possible action at that state.
+
+\CourseFigure{deep-q-network.jpg}{Deep Q-Network architecture: stacked frames and action values \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/deep-q-network.jpg}{[original figure]}}
+
+So, we see that Deep Q-Learning uses a neural network to approximate, given a state, the different Q-values for each possible action at that state. Now let's study the Deep Q-Learning algorithm.
+
+\section{The Deep Q-Learning Algorithm}\label{the-deep-q-learning-algorithm}
+
+We learned that Deep Q-Learning \textbf{uses a deep neural network to approximate the different Q-values for each possible action at a state} (value-function estimation).
+
+The difference is that, during the training phase, instead of updating the Q-value of a state-action pair directly as we have done with Q-Learning:
+
+\CourseFigure{q-ex-5.jpg}{Tabular Q-learning update used as a starting point \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/q-ex-5.jpg}{[original figure]}}
+
+in Deep Q-Learning, we create a \textbf{loss function that compares our Q-value prediction and the Q-target and uses gradient descent to update the weights of our Deep Q-Network to approximate our Q-values better}.
+
+\CourseFigure{Q-target.jpg}{Deep Q-Learning loss and TD target \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/Q-target.jpg}{[original figure]}}
+
+The Deep Q-Learning training algorithm has \emph{two phases}:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Sampling}: we perform actions and \textbf{store the observed experience tuples in a replay memory}.
+\item
+  \textbf{Training}: Select a \textbf{small batch of tuples randomly and learn from this batch using a gradient descent update step}.
+\end{itemize}
+
+\CourseFigure{sampling-training.jpg}{Sampling and training phases of Deep Q-Learning \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/sampling-training.jpg}{[original figure]}}
+
+This is not the only difference compared with Q-Learning. Deep Q-Learning training \textbf{might suffer from instability}, mainly because of combining a non-linear Q-value function (Neural Network) and bootstrapping (when we update targets with existing estimates and not an actual complete return).
+
+To help us stabilize the training, we implement three different solutions:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \emph{Experience Replay} to make more \textbf{efficient use of experiences}.
+\item
+  \emph{Fixed Q-Target} \textbf{to stabilize the training}.
+\item
+  \emph{Double Deep Q-Learning}, to \textbf{handle the problem of the overestimation of Q-values}.
+\end{enumerate}
+
+Let's go through them!
+
+\subsection{Experience Replay to make more efficient use of experiences}\label{experience-replay-to-make-more-efficient-use-of-experiences}
+
+Why do we create a replay memory?
+
+Experience Replay in Deep Q-Learning has two functions:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Make more efficient use of the experiences during the training}. Usually, in online reinforcement learning, the agent interacts with the environment, gets experiences (state, action, reward, and next state), learns from them (updates the neural network), and discards them. This is not efficient.
+\end{enumerate}
+
+Experience replay helps by \textbf{using the experiences of the training more efficiently}. We use a replay buffer that saves experience samples \textbf{that we can reuse during the training.}
+
+\CourseFigure{experience-replay.jpg}{Replay buffer storing past transitions \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/experience-replay.jpg}{[original figure]}}
+
+=\textgreater{} This allows the agent to \textbf{learn from the same experiences multiple times}.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  \textbf{Avoid forgetting previous experiences (aka catastrophic interference, or catastrophic forgetting) and reduce the correlation between experiences}.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{\href{https://en.wikipedia.org/wiki/Catastrophic_interference}{catastrophic forgetting}}: The problem we get if we give sequential samples of experiences to our neural network is that it tends to forget \textbf{the previous experiences as it gets new experiences.} For instance, if the agent is in the first level and then in the second, which is different, it can forget how to behave and play in the first level.
+\end{itemize}
+
+The solution is to create a Replay Buffer that stores experience tuples while interacting with the environment and then sample a small batch of tuples. This prevents \textbf{the network from only learning about what it has done immediately before.}
+
+Experience replay also has other benefits. By randomly sampling the experiences, we remove correlation in the observation sequences and avoid \textbf{action values from oscillating or diverging catastrophically.}
+
+In the Deep Q-Learning pseudocode, we \textbf{initialize a replay memory buffer D with capacity N} (N is a hyperparameter that you can define). We then store experiences in the memory and sample a batch of experiences to feed the Deep Q-Network during the training phase.
+
+\CourseFigure{experience-replay-pseudocode.jpg}{Experience replay in DQN training pseudocode \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/experience-replay-pseudocode.jpg}{[original figure]}}
+
+\subsection{Fixed Q-Target to stabilize the training}\label{fixed-q-target-to-stabilize-the-training}
+
+When we want to calculate the TD error (aka the loss), we calculate the \textbf{difference between the TD target (Q-Target) and the current Q-value (estimation of Q)}.
+
+But we \textbf{don't have any idea of the real TD target}. We need to estimate it. Using the Bellman equation, we saw that the TD target is just the reward of taking that action at that state plus the discounted highest Q value for the next state.
+
+\CourseFigure{Q-target.jpg}{Deep Q-Learning loss and TD target \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/Q-target.jpg}{[original figure]}}
+
+However, the problem is that we are using the same parameters (weights) for estimating the TD target \textbf{and} the Q-value. Consequently, there is a significant correlation between the TD target and the parameters we are changing.
+
+Therefore, at every step of training, \textbf{both our Q-values and the target values shift.} We're getting closer to our target, but the target is also moving. It's like chasing a moving target! This can lead to significant oscillation in training.
+
+It's like if you were a cowboy (the Q estimation) and you wanted to catch a cow (the Q-target). Your goal is to get closer (reduce the error).
+
+\CourseFigure{qtarget-1.jpg}{Moving-target analogy for Q-value training: the first step \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-1.jpg}{[original figure]}}
+
+At each time step, you're trying to approach the cow, which also moves at each time step (because you use the same parameters).
+
+\CourseFigure{qtarget-2.jpg}{Moving-target analogy: the target shifts \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-2.jpg}{[original figure]}}
+
+\CourseFigure{qtarget-3.jpg}{Moving-target analogy: continued target motion \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-3.jpg}{[original figure]}}
+
+This leads to a bizarre path of chasing (a significant oscillation in training).
+
+\CourseFigure{qtarget-4.jpg}{Moving-target analogy: oscillations in value learning \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/qtarget-4.jpg}{[original figure]}}
+
+Instead, what we see in the pseudo-code is that we:
+
+\begin{itemize}
+\tightlist
+\item
+  Use a \textbf{separate network with fixed parameters} for estimating the TD Target
+\item
+  \textbf{Copy the parameters from our Deep Q-Network every C steps} to update the target network.
+\end{itemize}
+
+\CourseFigure{fixed-q-target-pseudocode.jpg}{Fixed target network update in DQN pseudocode \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/fixed-q-target-pseudocode.jpg}{[original figure]}}
+
+\subsection{Double DQN}\label{double-dqn}
+
+Double DQNs, or Double Deep Q-Learning neural networks, were introduced \href{https://papers.nips.cc/paper/3964-double-q-learning}{by Hado van Hasselt}. This method \textbf{handles the problem of the overestimation of Q-values.}
+
+To understand this problem, remember how we calculate the TD Target:
+
+\CourseFigure{TD-1.jpg}{Temporal-difference target and maximizing over Q-values \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit3/TD-1.jpg}{[original figure]}}
+
+We face a simple problem by calculating the TD target: how are we sure that \textbf{the best action for the next state is the action with the highest Q-value?}
+
+We know that the accuracy of Q-values depends on what action we tried \textbf{and} what neighboring states we explored.
+
+Consequently, we don't have enough information about the best action to take at the beginning of the training. Therefore, taking the maximum Q-value (which is noisy) as the best action to take can lead to false positives. If non-optimal actions are regularly \textbf{given a higher Q value than the optimal best action, the learning will be complicated.}
+
+The solution is: when we compute the Q target, we use two networks to decouple the action selection from the target Q-value generation. We:
+
+\begin{itemize}
+\tightlist
+\item
+  Use our \textbf{DQN network} to select the best action to take for the next state (the action with the highest Q-value).
+\item
+  Use our \textbf{Target network} to calculate the target Q-value of taking that action at the next state.
+\end{itemize}
+
+Therefore, Double DQN helps us reduce the overestimation of Q-values and, as a consequence, helps us train faster and with more stable learning.
+
+Since these three improvements in Deep Q-Learning, many more have been added, such as Prioritized Experience Replay and Dueling Deep Q-Learning. They're out of the scope of this course but if you're interested, check the links we put in the reading list.
+
+\section{Hands-on}\label{hands-on}
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit3/unit3.ipynb}{Open the official Unit 3 training notebook in Google Colab}
+
+\href{http://hf.co/join/discord}{Official course help / Discord}
+
+Now that you've studied the theory behind Deep Q-Learning, \textbf{you're ready to train your Deep Q-Learning agent to play Atari Games}. We'll start with Space Invaders, but you'll be able to use any Atari game you want
+
+\CourseFigure{atari-envs.png}{Examples of Atari environments available for training \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[original animation]}}
+
+We're using the \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL-Baselines-3 Zoo integration}, a vanilla version of Deep Q-Learning with no extensions such as Double-DQN, Dueling-DQN, or Prioritized Experience Replay.
+
+Also, \textbf{if you want to learn to implement Deep Q-Learning by yourself after this hands-on}, you definitely should look at the CleanRL implementation: \url{https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/dqn_atari.py}
+
+To validate this hands-on for the certification process, you need to push your trained model to the Hub and \textbf{get a result of \textgreater= 200}.
+
+To find your result, go to the leaderboard and find your model, \textbf{the result = mean\_reward - std of reward}
+
+\textbf{If you don't find your model, go to the bottom of the page and click on the refresh button.}
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+And you can check your progress here \url{https://huggingface.co/spaces/ThomasSimonini/Check-my-progress-Deep-RL-Course}
+
+\textbf{To start the hands-on click on Open In Colab button} :
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit3/unit3.ipynb}{Open In Colab}
+
+\subsection{Unit 3: Deep Q-Learning with Atari Games {[}Space Invaders{]} using RL Baselines3 Zoo}\label{unit-3-deep-q-learning-with-atari-games-space-invaders-using-rl-baselines3-zoo}
+
+\CourseFigure{thumbnail.jpg}{Deep Q-Learning: Unit 3 course cover \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/thumbnail.jpg}{[original figure]}}
+
+In this hands-on, \textbf{you'll train a Deep Q-Learning agent} playing Space Invaders using \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL Baselines3 Zoo}, a training framework based on \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable-Baselines3} that provides scripts for training, evaluating agents, tuning hyperparameters, plotting results and recording videos.
+
+We're using the \href{https://stable-baselines3.readthedocs.io/en/master/modules/dqn.html}{RL-Baselines-3 Zoo integration, a vanilla version of Deep Q-Learning} with no extensions such as Double-DQN, Dueling-DQN, and Prioritized Experience Replay.
+
+\paragraph{{[}Game{]} Environments:}\label{game-environments}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://gymnasium.farama.org/environments/atari/space_invaders/}{SpacesInvadersNoFrameskip-v4}
+\end{itemize}
+
+You can see the difference between Space Invaders versions here \url{https://gymnasium.farama.org/environments/atari/space_invaders/#variants}
+
+\paragraph{{[}Reading{]} RL-Library:}\label{reading-rl-library}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/DLR-RM/rl-baselines3-zoo}{RL-Baselines3-Zoo}
+\end{itemize}
+
+\subsubsection{Objectives of this hands-on}\label{objectives-of-this-hands-on}
+
+At the end of the hands-on, you will:
+
+\begin{itemize}
+\tightlist
+\item
+  Be able to understand deeper \textbf{how RL Baselines3 Zoo works}.
+\item
+  Be able to \textbf{push your trained agent and the code to the Hub} with a nice video replay and an evaluation score .
+\end{itemize}
+
+\subsubsection{Prerequisites}\label{prerequisites}
+
+Before diving into the hands-on, you need to:
+
+{[}Reading{]} \textbf{\href{https://huggingface.co/deep-rl-course/unit3/introduction}{Study Deep Q-Learning by reading Unit 3}}
+
+We're constantly trying to improve our tutorials, so \textbf{if you find some issues in this hands-on}, please \href{https://github.com/huggingface/deep-rl-class/issues}{open an issue on the Github Repo}.
+
+\subsection{Let's train a Deep Q-Learning agent playing Atari' Space Invaders {[}Space Invaders{]} and upload it to the Hub.}\label{lets-train-a-deep-q-learning-agent-playing-atari-space-invaders-space-invaders-and-upload-it-to-the-hub.}
+
+We strongly recommend students \textbf{to use Google Colab for the hands-on exercises instead of running them on their personal computers}.
+
+By using Google Colab, \textbf{you can focus on learning and experimenting without worrying about the technical aspects of setting up your environments}.
+
+To validate this hands-on for the certification process, you need to push your trained model to the Hub and \textbf{get a result of \textgreater= 200}.
+
+To find your result, go to the leaderboard and find your model, \textbf{the result = mean\_reward - std of reward}
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction#certification-process}
+
+\subsubsection{Set the GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  To \textbf{accelerate the agent's training, we'll use a GPU}. To do that, go to \texttt{Runtime\ \textgreater{}\ Change\ Runtime\ type}
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Google Colab: change runtime type \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step1.jpg}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Hardware\ Accelerator\ \textgreater{}\ GPU}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Google Colab: select GPU accelerator \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/gpu-step2.jpg}{[original figure]}}
+
+\subsection{Install RL-Baselines3 Zoo and its dependencies {[}Reading{]}}\label{install-rl-baselines3-zoo-and-its-dependencies-reading}
+
+If you see \texttt{ERROR:\ pip\textquotesingle{}s\ dependency\ resolver\ does\ not\ currently\ take\ into\ account\ all\ the\ packages\ that\ are\ installed.} \textbf{this is normal and it's not a critical error} there's a conflict of version. But the packages we need are installed.
+
+\begin{lstlisting}
+# For now we install this update of RL-Baselines3 Zoo
+pip install git+https://github.com/DLR-RM/rl-baselines3-zoo
+\end{lstlisting}
+
+\begin{lstlisting}
+apt-get install swig cmake ffmpeg
+\end{lstlisting}
+
+To be able to use Atari games in Gymnasium we need to install atari package. And accept-rom-license to download the rom files (games files).
+
+\begin{lstlisting}
+!pip install gymnasium[atari]
+!pip install gymnasium[accept-rom-license]
+\end{lstlisting}
+
+\subsubsection{Create a virtual display}\label{create-a-virtual-display}
+
+During the hands-on, we'll need to generate a replay video. To do so, if you train it on a headless machine, \textbf{we need to have a virtual screen to be able to render the environment} (and thus record the frames).
+
+Hence the following cell will install the librairies and create and run a virtual screen
+
+\begin{lstlisting}
+apt install python-opengl
+apt install ffmpeg
+apt install xvfb
+pip3 install pyvirtualdisplay
+\end{lstlisting}
+
+\begin{lstlisting}
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsubsection{Train our Deep Q-Learning Agent to Play Space Invaders {[}Space Invaders{]}}\label{train-our-deep-q-learning-agent-to-play-space-invaders-space-invaders}
+
+To train an agent with RL-Baselines3-Zoo, we just need to do two things:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Create a hyperparameter config file that will contain our training hyperparameters called \texttt{dqn.yml}.
+\end{enumerate}
+
+This is a template example:
+
+\begin{lstlisting}
+SpaceInvadersNoFrameskip-v4:
+  env_wrapper:
+    - stable_baselines3.common.atari_wrappers.AtariWrapper
+  frame_stack: 4
+  policy: 'CnnPolicy'
+  n_timesteps: !!float 1e7
+  buffer_size: 100000
+  learning_rate: !!float 1e-4
+  batch_size: 32
+  learning_starts: 100000
+  target_update_interval: 1000
+  train_freq: 4
+  gradient_steps: 1
+  exploration_fraction: 0.1
+  exploration_final_eps: 0.01
+  # If True, you need to deactivate handle_timeout_termination
+  # in the replay_buffer_kwargs
+  optimize_memory_usage: False
+\end{lstlisting}
+
+Here we see that:
+
+\begin{itemize}
+\tightlist
+\item
+  We use the \texttt{Atari\ Wrapper} that preprocess the input (Frame reduction ,grayscale, stack 4 frames)
+\item
+  We use \texttt{CnnPolicy}, since we use Convolutional layers to process the frames
+\item
+  We train it for 10 million \texttt{n\_timesteps}
+\item
+  Memory (Experience Replay) size is 100000, aka the amount of experience steps you saved to train again your agent with.
+\end{itemize}
+
+Tip: My advice is to \textbf{reduce the training timesteps to 1M,} which will take about 90 minutes on a P100. \texttt{!nvidia-smi} will tell you what GPU you're using. At 10 million steps, this will take about 9 hours. I recommend running this on your local computer (or somewhere else). Just click on: \texttt{File\textgreater{}Download}.
+
+In terms of hyperparameters optimization, my advice is to focus on these 3 hyperparameters:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{learning\_rate}
+\item
+  \texttt{buffer\_size\ (Experience\ Memory\ size)}
+\item
+  \texttt{batch\_size}
+\end{itemize}
+
+As a good practice, you need to \textbf{check the documentation to understand what each hyperparameters does}: \url{https://stable-baselines3.readthedocs.io/en/master/modules/dqn.html#parameters}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  We start the training and save the models on \texttt{logs} folder
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Define the algorithm after \texttt{-\/-algo}, where we save the model after \texttt{-f} and where the hyperparameter config is after \texttt{-c}.
+\end{itemize}
+
+\begin{lstlisting}
+python -m rl_zoo3.train --algo ________ --env SpaceInvadersNoFrameskip-v4  -f _________  -c _________
+\end{lstlisting}
+
+\subparagraph{Solution}\label{solution}
+
+\begin{lstlisting}
+python -m rl_zoo3.train --algo dqn  --env SpaceInvadersNoFrameskip-v4 -f logs/ -c dqn.yml
+\end{lstlisting}
+
+\subsubsection{Let's evaluate our agent}\label{lets-evaluate-our-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  RL-Baselines3-Zoo provides \texttt{enjoy.py}, a python script to evaluate our agent. In most RL libraries, we call the evaluation script \texttt{enjoy.py}.
+\item
+  Let's evaluate it for 5000 timesteps
+\end{itemize}
+
+\begin{lstlisting}
+python -m rl_zoo3.enjoy  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --no-render  --n-timesteps _________  --folder logs/
+\end{lstlisting}
+
+\subparagraph{Solution}\label{solution-1}
+
+\begin{lstlisting}
+python -m rl_zoo3.enjoy  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --no-render  --n-timesteps 5000  --folder logs/
+\end{lstlisting}
+
+\subsubsection{Publish our trained model on the Hub}\label{publish-our-trained-model-on-the-hub}
+
+Now that we saw we got good results after the training, we can publish our trained model on the hub with one line of code.
+
+\CourseFigure{space-invaders-model.png}{Space Invaders trained-agent demonstration (first frame) \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit3/space-invaders-model.gif}{[original animation]}}
+
+By using \texttt{rl\_zoo3.push\_to\_hub} \textbf{you evaluate, record a replay, generate a model card of your agent and push it to the hub}.
+
+This way:
+
+\begin{itemize}
+\tightlist
+\item
+  You can \textbf{showcase our work}
+\item
+  You can \textbf{visualize your agent playing}
+\item
+  You can \textbf{share with the community an agent that others can use}
+\item
+  You can \textbf{access a leaderboard to see how well your agent is performing compared to your classmates} \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}
+\end{itemize}
+
+To be able to share your model with the community there are three more steps to follow:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  (If it's not already done) create an account to HF -\textgreater{} \url{https://huggingface.co/join}
+\item
+  Sign in and then, you need to store your authentication token from the Hugging Face website.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  Create a new token (\url{https://huggingface.co/settings/tokens}) \textbf{with write role}
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Creating a Hugging Face access token \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/create-token.jpg}{[original figure]}}
+
+\begin{itemize}
+\tightlist
+\item
+  Copy the token
+\item
+  Run the cell below and past the token
+\end{itemize}
+
+\begin{lstlisting}
+from huggingface_hub import notebook_login # To log to our Hugging Face account to be able to upload models to the Hub.
+notebook_login()
+!git config --global credential.helper store
+\end{lstlisting}
+
+If you don't want to use a Google Colab or a Jupyter Notebook, you need to use this command instead: \texttt{huggingface-cli\ login}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  We're now ready to push our trained agent to the Hub
+\end{enumerate}
+
+Let's run push\_to\_hub.py file to upload our trained agent to the Hub.
+
+\texttt{-\/-repo-name}: The name of the repo
+
+\texttt{-orga}: Your Hugging Face username
+
+\texttt{-f}: Where the trained model folder is (in our case \texttt{logs})
+
+\CourseFigure{select-id.png}{Selecting the trained model directory for publishing \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/notebooks/unit3/select-id.png}{[original figure]}}
+
+\begin{lstlisting}
+python -m rl_zoo3.push_to_hub  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --repo-name _____________________ -orga _____________________ -f logs/
+\end{lstlisting}
+
+\subparagraph{Solution}\label{solution-2}
+
+\begin{lstlisting}
+python -m rl_zoo3.push_to_hub  --algo dqn  --env SpaceInvadersNoFrameskip-v4  --repo-name dqn-SpaceInvadersNoFrameskip-v4  -orga ThomasSimonini  -f logs/
+\end{lstlisting}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Congrats you've just trained and uploaded your first Deep Q-Learning agent using RL-Baselines-3 Zoo. The script above should have displayed a link to a model repository such as \url{https://huggingface.co/ThomasSimonini/dqn-SpaceInvadersNoFrameskip-v4}. When you go to this link, you can:
+
+\begin{itemize}
+\tightlist
+\item
+  See a \textbf{video preview of your agent} at the right.
+\item
+  Click ``Files and versions'' to see all the files in the repository.
+\item
+  Click ``Use in stable-baselines3'' to get a code snippet that shows how to load the model.
+\item
+  A model card (\texttt{README.md} file) which gives a description of the model and the hyperparameters you used.
+\end{itemize}
+
+Under the hood, the Hub uses git-based repositories (don't worry if you don't know what git is), which means you can update the model with new versions as you experiment and improve your agent.
+
+\textbf{Compare the results of your agents with your classmates} using the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{leaderboard}
+
+\subsubsection{Load a powerful trained model}\label{load-a-powerful-trained-model}
+
+\begin{itemize}
+\tightlist
+\item
+  The Stable-Baselines3 team uploaded \textbf{more than 150 trained Deep Reinforcement Learning agents on the Hub}.
+\end{itemize}
+
+You can find them here: \url{https://huggingface.co/sb3}
+
+Some examples:
+
+\begin{itemize}
+\tightlist
+\item
+  Asteroids: \url{https://huggingface.co/sb3/dqn-AsteroidsNoFrameskip-v4}
+\item
+  Beam Rider: \url{https://huggingface.co/sb3/dqn-BeamRiderNoFrameskip-v4}
+\item
+  Breakout: \url{https://huggingface.co/sb3/dqn-BreakoutNoFrameskip-v4}
+\item
+  Road Runner: \url{https://huggingface.co/sb3/dqn-RoadRunnerNoFrameskip-v4}
+\end{itemize}
+
+Let's load an agent playing Beam Rider: \url{https://huggingface.co/sb3/dqn-BeamRiderNoFrameskip-v4}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  We download the model using \texttt{rl\_zoo3.load\_from\_hub}, and place it in a new folder that we can call \texttt{rl\_trained}
+\end{enumerate}
+
+\begin{lstlisting}
+# Download model and save it into the logs/ folder
+python -m rl_zoo3.load_from_hub --algo dqn --env BeamRiderNoFrameskip-v4 -orga sb3 -f rl_trained/
+\end{lstlisting}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Let's evaluate if for 5000 timesteps
+\end{enumerate}
+
+\begin{lstlisting}
+python -m rl_zoo3.enjoy --algo dqn --env BeamRiderNoFrameskip-v4 -n 5000  -f rl_trained/ --no-render
+\end{lstlisting}
+
+Why not trying to train your own \textbf{Deep Q-Learning Agent playing BeamRiderNoFrameskip-v4? .}
+
+If you want to try, check \url{https://huggingface.co/sb3/dqn-BeamRiderNoFrameskip-v4#hyperparameters} \textbf{in the model card, you have the hyperparameters of the trained agent.}
+
+But finding hyperparameters can be a daunting task. Fortunately, we'll see in the next Unit, how we can \textbf{use Optuna for optimizing the Hyperparameters .}
+
+\subsubsection{Some additional challenges}\label{some-additional-challenges}
+
+The best way to learn \textbf{is to try things by your own}!
+
+In the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{Leaderboard} you will find your agents. Can you get to the top?
+
+Here's a list of environments you can try to train your agent with:
+
+\begin{itemize}
+\tightlist
+\item
+  BeamRiderNoFrameskip-v4
+\item
+  BreakoutNoFrameskip-v4
+\item
+  EnduroNoFrameskip-v4
+\item
+  PongNoFrameskip-v4
+\end{itemize}
+
+Also, \textbf{if you want to learn to implement Deep Q-Learning by yourself}, you definitely should look at CleanRL implementation: \url{https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/dqn_atari.py}
+
+\CourseFigure{atari-envs.png}{Examples of Atari environments available for training \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[original animation]}}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Congrats on finishing this chapter!
+
+If you're still feel confused with all these elements\ldots it's totally normal! \textbf{This was the same for me and for all people who studied RL.}
+
+Take time to really \textbf{grasp the material before continuing and try the additional challenges}. It's important to master these elements and having a solid foundations.
+
+In the next unit, \textbf{we're going to learn about \href{https://optuna.org/}{Optuna}}. One of the most critical task in Deep Reinforcement Learning is to find a good set of training hyperparameters. And Optuna is a library that helps you to automate the search.
+
+\paragraph{This is a course built with you}\label{this-is-a-course-built-with-you}
+
+Finally, we want to improve and update the course iteratively with your feedback. If you have some, please fill this form \url{https://forms.gle/3HgA7bEHwAmmLfwh9}
+
+We're constantly trying to improve our tutorials, so \textbf{if you find some issues in this notebook}, please \href{https://github.com/huggingface/deep-rl-class/issues}{open an issue on the Github Repo}.
+
+See you on Bonus unit 2!
+
+\paragraph{Keep Learning, Stay Awesome}\label{keep-learning-stay-awesome}
+
+\section{Quiz}\label{quiz}
+
+The best way to learn and \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{to avoid the illusion of competence} \textbf{is to test yourself.} This will help you to find \textbf{where you need to reinforce your knowledge}.
+
+\subsubsection{Q1: We mentioned Q Learning is a tabular method. What are tabular methods?}\label{q1-we-mentioned-q-learning-is-a-tabular-method.-what-are-tabular-methods}
+
+\subsubsection{Q2: Why can't we use a classical Q-Learning to solve an Atari Game?}\label{q2-why-cant-we-use-a-classical-q-learning-to-solve-an-atari-game}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Atari environments are too fast for Q-Learning
+\item
+  \textbf{B.} Atari environments have a big observation space. So creating an updating the Q-Table would not be efficient
+\end{itemize}
+
+\subsubsection{Q3: Why do we stack four frames together when we use frames as input in Deep Q-Learning?}\label{q3-why-do-we-stack-four-frames-together-when-we-use-frames-as-input-in-deep-q-learning}
+
+\subsubsection{Q4: What are the two phases of Deep Q-Learning?}\label{q4-what-are-the-two-phases-of-deep-q-learning}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Sampling
+\item
+  \textbf{B.} Shuffling
+\item
+  \textbf{C.} Reranking
+\item
+  \textbf{D.} Training
+\end{itemize}
+
+\subsubsection{Q5: Why do we create a replay memory in Deep Q-Learning?}\label{q5-why-do-we-create-a-replay-memory-in-deep-q-learning}
+
+\subsubsection{Q6: How do we use Double Deep Q-Learning?}\label{q6-how-do-we-use-double-deep-q-learning}
+
+Congrats on finishing this Quiz , if you missed some elements, take time to read again the chapter to reinforce () your knowledge.
+
+\subsection{Quiz solutions and explanations}\label{quiz-solutions-and-explanations}
+
+\subsubsection{Q1 solution}\label{q1-solution}
+
+\emph{Tabular methods} is a type of problem in which the state and actions spaces are small enough to approximate value functions to be \textbf{represented as arrays and tables}. For instance, \textbf{Q-Learning is a tabular method} since we use a table to represent the state, and action value pairs.
+
+\subsubsection{Q2 solution}\label{q2-solution}
+
+\textbf{Correct choice(s):} B
+
+\textbf{A.} Atari environments are too fast for Q-Learning
+
+\textbf{B.} Atari environments have a big observation space. So creating an updating the Q-Table would not be efficient
+
+\subsubsection{Q3 solution}\label{q3-solution}
+
+We stack frames together because it helps us \textbf{handle the problem of temporal limitation}: one frame is not enough to capture temporal information. For instance, in pong, our agent \textbf{will be unable to know the ball direction if it gets only one frame}.
+
+\CourseFigure{temporal-limitation.jpg}{A single Pong frame does not reveal ball velocity \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation.jpg}{[original figure]}}
+
+\CourseFigure{temporal-limitation-2.jpg}{Several consecutive Pong frames reveal ball direction \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/temporal-limitation-2.jpg}{[original figure]}}
+
+\subsubsection{Q4 solution}\label{q4-solution}
+
+\textbf{Correct choice(s):} A, D
+
+\textbf{A.} Sampling Explanation: We perform actions and store the observed experiences tuples in a replay memory.
+
+\textbf{B.} Shuffling
+
+\textbf{C.} Reranking
+
+\textbf{D.} Training Explanation: We select the small batch of tuple randomly and learn from it using a gradient descent update step.
+
+\subsubsection{Q5 solution}\label{q5-solution}
+
+\textbf{1. Make more efficient use of the experiences during the training}
+
+Usually, in online reinforcement learning, the agent interacts in the environment, gets experiences (state, action, reward, and next state), learns from them (updates the neural network), and discards them. This is not efficient. But, with experience replay, \textbf{we create a replay buffer that saves experience samples that we can reuse during the training}.
+
+\textbf{2. Avoid forgetting previous experiences and reduce the correlation between experiences}
+
+The problem we get if we give sequential samples of experiences to our neural network is that it \textbf{tends to forget the previous experiences as it overwrites new experiences}. For instance, if we are in the first level and then the second, which is different, our agent can forget how to behave and play in the first level.
+
+\subsubsection{Q6 solution}\label{q6-solution}
+
+When we compute the Q target, we use two networks to decouple the action selection from the target Q value generation. We:
+
+\begin{itemize}
+\item
+  Use our \emph{DQN network} to \textbf{select the best action to take for the next state} (the action with the highest Q value).
+\item
+  Use our \emph{Target network} to calculate \textbf{the target Q value of taking that action at the next state}.
+\end{itemize}
+
+\section{Conclusion}\label{conclusion}
+
+Congrats on finishing this chapter! There was a lot of information. And congrats on finishing the tutorial. You've just trained your first Deep Q-Learning agent and shared it on the Hub .
+
+Take time to really grasp the material before continuing.
+
+Don't hesitate to train your agent in other environments (Pong, Seaquest, QBert, Ms Pac Man). The \textbf{best way to learn is to try things on your own!}
+
+\CourseFigure{atari-envs.png}{Examples of Atari environments available for training \protect\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit4/atari-envs.gif}{[original animation]}}
+
+In the next unit, \textbf{we're going to learn about Optuna}. One of the most critical tasks in Deep Reinforcement Learning is to find a good set of training hyperparameters. Optuna is a library that helps you to automate the search.
+
+Finally, we would love \textbf{to hear what you think of the course and how we can improve it}. If you have some feedback then please \href{https://forms.gle/BzKXWzLAGZESGNaE9}{fill this form}
+
+\subsubsection{Keep Learning, stay awesome}\label{keep-learning-stay-awesome-1}
+
+\section{Glossary}\label{glossary}
+
+This is a community-created glossary. Contributions are welcomed!
+
+\begin{itemize}
+\item
+  \textbf{Tabular Method:} Type of problem in which the state and action spaces are small enough to approximate value functions to be represented as arrays and tables. \textbf{Q-learning} is an example of tabular method since a table is used to represent the value for different state-action pairs.
+\item
+  \textbf{Deep Q-Learning:} Method that trains a neural network to approximate, given a state, the different \textbf{Q-values} for each possible action at that state. It is used to solve problems when observational space is too big to apply a tabular Q-Learning approach.
+\item
+  \textbf{Temporal Limitation} is a difficulty presented when the environment state is represented by frames. A frame by itself does not provide temporal information. In order to obtain temporal information, we need to \textbf{stack} a number of frames together.
+\item
+  \textbf{Phases of Deep Q-Learning:}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \textbf{Sampling:} Actions are performed, and observed experience tuples are stored in a \textbf{replay memory}.
+  \item
+    \textbf{Training:} Batches of tuples are selected randomly and the neural network updates its weights using gradient descent.
+  \end{itemize}
+\item
+  \textbf{Solutions to stabilize Deep Q-Learning:}
+
+  \begin{itemize}
+  \item
+    \textbf{Experience Replay:} A replay memory is created to save experiences samples that can be reused during training. This allows the agent to learn from the same experiences multiple times. Also, it helps the agent avoid forgetting previous experiences as it gets new ones.
+  \item
+    \textbf{Random sampling} from replay buffer allows to remove correlation in the observation sequences and prevents action values from oscillating or diverging catastrophically.
+  \item
+    \textbf{Fixed Q-Target:} In order to calculate the \textbf{Q-Target} we need to estimate the discounted optimal \textbf{Q-value} of the next state by using Bellman equation. The problem is that the same network weights are used to calculate the \textbf{Q-Target} and the \textbf{Q-value}. This means that everytime we are modifying the \textbf{Q-value}, the \textbf{Q-Target} also moves with it. To avoid this issue, a separate network with fixed parameters is used for estimating the Temporal Difference Target. The target network is updated by copying parameters from our Deep Q-Network after certain \textbf{C steps}.
+  \item
+    \textbf{Double DQN:} Method to handle \textbf{overestimation} of \textbf{Q-Values}. This solution uses two networks to decouple the action selection from the target \textbf{Value generation}:
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \textbf{DQN Network} to select the best action to take for the next state (the action with the highest \textbf{Q-Value})
+    \item
+      \textbf{Target Network} to calculate the target \textbf{Q-Value} of taking that action at the next state. This approach reduces the \textbf{Q-Values} overestimation, it helps to train faster and have more stable learning.
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+
+If you want to improve the course, you can \href{https://github.com/huggingface/deep-rl-class/pulls}{open a Pull Request.}
+
+This glossary was made possible thanks to:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/dario248}{Dario Paez}
+\end{itemize}
+
+\section{Additional Readings}\label{additional-readings}
+
+These are \textbf{optional readings} if you want to go deeper.
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://youtu.be/Psrhxy88zww}{Foundations of Deep RL Series, L2 Deep Q-Learning by Pieter Abbeel}
+\item
+  \href{https://arxiv.org/abs/1312.5602}{Playing Atari with Deep Reinforcement Learning}
+\item
+  \href{https://papers.nips.cc/paper/2010/hash/091d584fced301b442654dd8c23b3fc9-Abstract.html}{Double Deep Q-Learning}
+\item
+  \href{https://arxiv.org/abs/1511.05952}{Prioritized Experience Replay}
+\item
+  \href{https://arxiv.org/abs/1511.06581}{Dueling Deep Q-Learning}
+\end{itemize}
+
+\end{document}

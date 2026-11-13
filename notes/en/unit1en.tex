@@ -1,0 +1,1656 @@
+% !TEX program = pdflatex
+% Source: Hugging Face Deep Reinforcement Learning Course, Unit 1.
+% Compile from the notes/ directory (default LaTeX Workshop + latexmk -pdf):
+%   cd notes/en
+%   latexmk -pdf -interaction=nonstopmode unit1en.tex
+% This document expects ../preamble.tex and ../assets/unit1/ relative to notes/en/.
+\documentclass[11pt,a4paper]{article}
+\input{../preamble.tex}
+\graphicspath{{../assets/unit1/}}
+\title{\textbf{Deep Reinforcement Learning}\\[0.35em]\large Unit 1: Foundations and First Agent}
+\author{Hugging Face Deep RL Course\\\small Faithful MDX-to-\LaTeX{} study edition}
+\date{}
+\begin{document}
+\maketitle
+\vspace{-0.8em}
+\begin{center}\small\color{secondary}Original content: Hugging Face Deep RL Course.\end{center}
+\tableofcontents
+\vspace{1em}
+\clearpage
+\section{Introduction to Deep Reinforcement Learning}\label{introduction-to-deep-reinforcement-learning}
+
+\CourseFigure{thumbnail.jpg}{Unit 1: Introduction to Deep Reinforcement Learning (official course illustration)}
+
+Welcome to the most fascinating topic in Artificial Intelligence: \textbf{Deep Reinforcement Learning.}
+
+Deep RL is a type of Machine Learning where an agent learns \textbf{how to behave} in an environment \textbf{by performing actions} and \textbf{seeing the results.}
+
+In this first unit, \textbf{you'll learn the foundations of Deep Reinforcement Learning.}
+
+Then, you'll \textbf{train your Deep Reinforcement Learning agent, a lunar lander to land correctly on the Moon} using \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable-Baselines3}, a Deep Reinforcement Learning library.
+
+\CourseFigure{lunarLander-still.jpg}{LunarLander environment: static scene from the official course thumbnail; the original animation is linked below (\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/lunarLander.gif}{original GIF})}
+
+And finally, you'll \textbf{upload this trained agent to the Hugging Face Hub , a free, open platform where people can share ML models, datasets, and demos.}
+
+It's essential \textbf{to master these elements} before diving into implementing Deep Reinforcement Learning agents. The goal of this chapter is to give you solid foundations.
+
+After this unit, in a bonus unit, you'll be \textbf{able to train Huggy the Dog to fetch the stick and play with him }.
+
+\CourseFigure{huggy-bonus.jpg}{Huggy the Dog: still image from official course artwork (\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit0/huggy.mp4}{original video})}
+
+So let's get started!
+
+\section{What is Reinforcement Learning?}\label{what-is-reinforcement-learning}
+
+To understand Reinforcement Learning, let's start with the big picture.
+
+\subsection{The big picture}\label{the-big-picture}
+
+The idea behind Reinforcement Learning is that an agent (an AI) will learn from the environment by \textbf{interacting with it} (through trial and error) and \textbf{receiving rewards} (negative or positive) as feedback for performing actions.
+
+Learning from interactions with the environment \textbf{comes from our natural experiences.}
+
+For instance, imagine putting your little brother in front of a video game he never played, giving him a controller, and leaving him alone.
+
+\CourseFigure{Illustration_1.jpg}{First action: the player moves right in the game}
+
+Your brother will interact with the environment (the video game) by pressing the right button (action). He got a coin, that's a +1 reward. It's positive, he just understood that in this game \textbf{he must get the coins.}
+
+\CourseFigure{Illustration_2.jpg}{Positive reward: collecting a coin}
+
+But then, \textbf{he presses the right button again} and he touches an enemy. He just died, so that's a -1 reward.
+
+\CourseFigure{Illustration_3.jpg}{Negative reward: encountering an enemy}
+
+By interacting with his environment through trial and error, your little brother understands that \textbf{he needs to get coins in this environment but avoid the enemies.}
+
+\textbf{Without any supervision}, the child will get better and better at playing the game.
+
+That's how humans and animals learn, \textbf{through interaction.} Reinforcement Learning is just a \textbf{computational approach of learning from actions.}
+
+\subsubsection{A formal definition}\label{a-formal-definition}
+
+We can now make a formal definition:
+
+\begin{quote}
+\textbf{Course note.} Reinforcement learning is a framework for solving control tasks (also called decision problems) by building agents that learn from the environment by interacting with it through trial and error and receiving rewards (positive or negative) as unique feedback.
+\end{quote}
+
+But how does Reinforcement Learning work?
+
+\section{The Reinforcement Learning Framework}\label{the-reinforcement-learning-framework}
+
+\subsection{The RL Process}\label{the-rl-process}
+
+\CourseFigure{RL_process.jpg}{The RL Process: a loop of state, action, reward and next state Source: Reinforcement Learning: An Introduction, Richard Sutton and Andrew G. Barto}
+
+\noindent{\footnotesize Source: \url{http://incompleteideas.net/book/RLbook2020.pdf}}
+
+To understand the RL process, let's imagine an agent learning to play a platform game:
+
+\CourseFigure{RL_process_game.jpg}{RL interaction cycle illustrated with a video-game environment}
+
+\begin{itemize}
+\tightlist
+\item
+  Our Agent receives \textbf{state \(S_0\)} from the \textbf{Environment} --- we receive the first frame of our game (Environment).
+\item
+  Based on that \textbf{state \(S_0\),} the Agent takes \textbf{action \(A_0\)} --- our Agent will move to the right.
+\item
+  The environment goes to a \textbf{new} \textbf{state \(S_1\)} --- new frame.
+\item
+  The environment gives some \textbf{reward \(R_1\)} to the Agent --- we're not dead \emph{(Positive Reward +1)}.
+\end{itemize}
+
+This RL loop outputs a sequence of \textbf{state, action, reward and next state.}
+
+\CourseFigure{sars.jpg}{Transition tuple: state, action, reward and next state}
+
+The agent's goal is to \emph{maximize} its cumulative reward, \textbf{called the expected return.}
+
+\subsection{The reward hypothesis: the central idea of Reinforcement Learning}\label{the-reward-hypothesis-the-central-idea-of-reinforcement-learning}
+
+\(\Rightarrow\) Why is the goal of the agent to maximize the expected return?
+
+Because RL is based on the \textbf{reward hypothesis}, which is that all goals can be described as the \textbf{maximization of the expected return} (expected cumulative reward).
+
+That's why in Reinforcement Learning, \textbf{to have the best behavior,} we aim to learn to take actions that \textbf{maximize the expected cumulative reward.}
+
+\subsection{Markov Property}\label{markov-property}
+
+In papers, you'll see that the RL process is called a \textbf{Markov Decision Process} (MDP).
+
+We'll talk again about the Markov Property in the following units. But if you need to remember something today about it, it's this: the Markov Property implies that our agent needs \textbf{only the current state to decide} what action to take and \textbf{not the history of all the states and actions} they took before.
+
+\subsection{Observations/States Space}\label{observationsstates-space}
+
+Observations/States are the \textbf{information our agent gets from the environment.} In the case of a video game, it can be a frame (a screenshot). In the case of the trading agent, it can be the value of a certain stock, etc.
+
+There is a differentiation to make between \emph{observation} and \emph{state}, however:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{State s}: is \textbf{a complete description of the state of the world} (there is no hidden information). In a fully observed environment.
+\end{itemize}
+
+\CourseFigure{chess.jpg}{In chess game, we receive a state from the environment since we have access to the whole check board information.}
+
+In a chess game, we have access to the whole board information, so we receive a state from the environment. In other words, the environment is fully observed.
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Observation o}: is a \textbf{partial description of the state.} In a partially observed environment.
+\end{itemize}
+
+\CourseFigure{mario.jpg}{In Super Mario Bros, we only see the part of the level close to the player, so we receive an observation.}
+
+In Super Mario Bros, we only see the part of the level close to the player, so we receive an observation.
+
+In Super Mario Bros, we are in a partially observed environment. We receive an observation \textbf{since we only see a part of the level.}
+
+\begin{quote}
+\textbf{Course note.} In this course, we use the term ``state'' to denote both state and observation, but we will make the distinction in implementations.
+\end{quote}
+
+To recap:
+
+\CourseFigure{obs_space_recap.jpg}{Complete state versus partial observation}
+
+\subsection{Action Space}\label{action-space}
+
+The Action space is the set of \textbf{all possible actions in an environment.}
+
+The actions can come from a \emph{discrete} or \emph{continuous space}:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Discrete space}: the number of possible actions is \textbf{finite}.
+\end{itemize}
+
+\CourseFigure{mario.jpg}{In Super Mario Bros, we have only 4 possible actions: left, right, up (jumping) and down (crouching).}
+
+Again, in Super Mario Bros, we have a finite set of actions since we have only 4 directions.
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Continuous space}: the number of possible actions is \textbf{infinite}.
+\end{itemize}
+
+\CourseFigure{self_driving_car.jpg}{A Self Driving Car agent has an infinite number of possible actions since it can turn left 20\textdegree{}, 21,1\textdegree{}, 21,2\textdegree{}, honk, turn right 20\textdegree{}\ldots{}}
+
+To recap:
+
+\CourseFigure{action_space.jpg}{Discrete versus continuous action spaces}
+
+Taking this information into consideration is crucial because it will \textbf{have importance when choosing the RL algorithm in the future.}
+
+\subsection{Rewards and the discounting}\label{rewards-and-the-discounting}
+
+The reward is fundamental in RL because it's \textbf{the only feedback} for the agent. Thanks to it, our agent knows \textbf{if the action taken was good or not.}
+
+The cumulative reward at each time step \textbf{t} can be written as:
+
+\CourseFigure{rewards_1.jpg}{The cumulative reward equals the sum of all rewards in the sequence.}
+
+Which is equivalent to:
+
+\CourseFigure{rewards_2.jpg}{The cumulative reward = rt+1 (rt+k+1 = rt+0+1 = rt+1)+ rt+2 (rt+k+1 = rt+1+1 = rt+2) + ...}
+
+However, in reality, \textbf{we can't just add them like that.} The rewards that come sooner (at the beginning of the game) \textbf{are more likely to happen} since they are more predictable than the long-term future reward.
+
+Let's say your agent is this tiny mouse that can move one tile each time step, and your opponent is the cat (that can move too). The mouse's goal is \textbf{to eat the maximum amount of cheese before being eaten by the cat.}
+
+\CourseFigure{rewards_3.jpg}{Cheese-and-cat illustration of delayed rewards}
+
+As we can see in the diagram, \textbf{it's more probable to eat the cheese near us than the cheese close to the cat} (the closer we are to the cat, the more dangerous it is).
+
+Consequently, \textbf{the reward near the cat, even if it is bigger (more cheese), will be more discounted} since we're not really sure we'll be able to eat it.
+
+To discount the rewards, we proceed like this:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  We define a discount rate called gamma. \textbf{It must be between 0 and 1.} Most of the time between \textbf{0.95 and 0.99}.
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  The larger the gamma, the smaller the discount. This means our agent \textbf{cares more about the long-term reward.}
+\item
+  On the other hand, the smaller the gamma, the bigger the discount. This means our \textbf{agent cares more about the short term reward (the nearest cheese).}
+\end{itemize}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Then, each reward will be discounted by gamma to the exponent of the time step. As the time step increases, the cat gets closer to us, \textbf{so the future reward is less and less likely to happen.}
+\end{enumerate}
+
+Our discounted expected cumulative reward is:
+
+\CourseFigure{rewards_4.jpg}{Discounted return with discount factor gamma}
+
+\section{Type of tasks}\label{type-of-tasks}
+
+A task is an \textbf{instance} of a Reinforcement Learning problem. We can have two types of tasks: \textbf{episodic} and \textbf{continuing}.
+
+\subsection{Episodic task}\label{episodic-task}
+
+In this case, we have a starting point and an ending point \textbf{(a terminal state). This creates an episode}: a list of States, Actions, Rewards, and new States.
+
+For instance, think about Super Mario Bros: an episode begins at the launch of a new Mario Level and ends \textbf{when you're killed or you reached the end of the level.}
+
+\CourseFigure{mario.jpg}{Beginning of a new episode.}
+
+\subsection{Continuing tasks}\label{continuing-tasks}
+
+These are tasks that continue forever (\textbf{no terminal state}). In this case, the agent must \textbf{learn how to choose the best actions and simultaneously interact with the environment.}
+
+For instance, an agent that does automated stock trading. For this task, there is no starting point and terminal state. \textbf{The agent keeps running until we decide to stop it.}
+
+\CourseFigure{stock.jpg}{Stock trading as an example of a continuing task}
+
+To recap:
+
+\CourseFigure{tasks.jpg}{Episodic versus continuing tasks}
+
+\section{The Exploration/Exploitation trade-off}\label{the-explorationexploitation-trade-off}
+
+Finally, before looking at the different methods to solve Reinforcement Learning problems, we must cover one more very important topic: \emph{the exploration/exploitation trade-off.}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Exploration} is exploring the environment by trying random actions in order to \textbf{find more information about the environment.}
+\item
+  \emph{Exploitation} is \textbf{exploiting known information to maximize the reward.}
+\end{itemize}
+
+Remember, the goal of our RL agent is to maximize the expected cumulative reward. However, \textbf{we can fall into a common trap}.
+
+Let's take an example:
+
+\CourseFigure{exp_1.jpg}{Cheese maze: local versus distant rewards in the exploration--exploitation trade-off}
+
+In this game, our mouse can have an \textbf{infinite amount of small cheese} (+1 each). But at the top of the maze, there is a gigantic sum of cheese (+1000).
+
+However, if we only focus on exploitation, our agent will never reach the gigantic sum of cheese. Instead, it will only exploit \textbf{the nearest source of rewards,} even if this source is small (exploitation).
+
+But if our agent does a little bit of exploration, it can \textbf{discover the big reward} (the pile of big cheese).
+
+This is what we call the exploration/exploitation trade-off. We need to balance how much we \textbf{explore the environment} and how much we \textbf{exploit what we know about the environment.}
+
+Therefore, we must \textbf{define a rule that helps to handle this trade-off}. We'll see the different ways to handle it in the future units.
+
+If it's still confusing, \textbf{think of a real problem: the choice of picking a restaurant:}
+
+\CourseFigure{exp_2.jpg}{Exploration versus exploitation: familiar restaurant or unknown alternative --- Source: Berkley AI Course}
+
+\noindent{\footnotesize Source: \url{https://inst.eecs.berkeley.edu/~cs188/sp20/assets/lecture/lec15_6up.pdf}}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Exploitation}: You go to the same one that you know is good every day and \textbf{take the risk to miss another better restaurant.}
+\item
+  \emph{Exploration}: Try restaurants you never went to before, with the risk of having a bad experience \textbf{but the probable opportunity of a fantastic experience.}
+\end{itemize}
+
+To recap:
+
+\CourseFigure{expexpltradeoff.jpg}{Exploration versus exploitation: summary diagram}
+
+\section{Two main approaches for solving RL problems}\label{two-main-approaches-for-solving-rl-problems}
+
+\begin{quote}
+\textbf{Course note.} Now that we learned the RL framework, how do we solve the RL problem?
+\end{quote}
+
+In other words, how do we build an RL agent that can \textbf{select the actions that maximize its expected cumulative reward?}
+
+\subsection{The Policy \texorpdfstring{$\pi$}{pi}: the agent's brain}\label{the-policy-ux3c0-the-agents-brain}
+
+The Policy \textbf{$\pi$} is the \textbf{brain of our Agent}, it's the function that tells us what \textbf{action to take given the state we are in.} So it \textbf{defines the agent's behavior} at a given time.
+
+\CourseFigure{policy_1.jpg}{Think of policy as the brain of our agent, the function that will tell us the action to take given a state}
+
+This Policy \textbf{is the function we want to learn}, our goal is to find the optimal policy $\pi^*$, the policy that \textbf{maximizes expected return} when the agent acts according to it. We find this $\pi^*$ \textbf{through training.}
+
+There are two approaches to train our agent to find this optimal policy $\pi^*$:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Directly,} by teaching the agent to learn which \textbf{action to take,} given the current state: \textbf{Policy-Based Methods.}
+\item
+  Indirectly, \textbf{teach the agent to learn which state is more valuable} and then take the action that \textbf{leads to the more valuable states}: Value-Based Methods.
+\end{itemize}
+
+\subsection{Policy-Based Methods}\label{policy-based-methods}
+
+In Policy-Based methods, \textbf{we learn a policy function directly.}
+
+This function will define a mapping from each state to the best corresponding action. Alternatively, it could define \textbf{a probability distribution over the set of possible actions at that state.}
+
+\CourseFigure{policy_2.jpg}{As we can see here, the policy (deterministic) directly indicates the action to take for each step.}
+
+We have two types of policies:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Deterministic}: a policy at a given state \textbf{will always return the same action.}
+\end{itemize}
+
+\CourseFigure{policy_3.jpg}{action = policy(state)}
+
+\CourseFigure{policy_4.jpg}{Stochastic policy: actions are sampled from a conditional probability distribution}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Stochastic}: outputs \textbf{a probability distribution over actions.}
+\end{itemize}
+
+\CourseFigure{policy_5.jpg}{policy(actions | state) = probability distribution over the set of actions given the current state}
+
+\CourseFigure{policy-based.png}{Given an initial state, our stochastic policy will output probability distributions over the possible actions at that state.}
+
+If we recap:
+
+\CourseFigure{pbm_1.jpg}{Policy-based methods: deterministic policies}
+
+\CourseFigure{pbm_2.jpg}{Policy-based methods: stochastic policies}
+
+\subsection{Value-based methods}\label{value-based-methods}
+
+In value-based methods, instead of learning a policy function, we \textbf{learn a value function} that maps a state to the expected value \textbf{of being at that state.}
+
+The value of a state is the \textbf{expected discounted return} the agent can get if it \textbf{starts in that state, and then acts according to our policy.}
+
+``Act according to our policy'' just means that our policy is \textbf{``going to the state with the highest value''.}
+
+\CourseFigure{value_1.jpg}{State-value function and expected discounted return}
+
+Here we see that our value function \textbf{defined values for each possible state.}
+
+\CourseFigure{value_2.jpg}{Thanks to our value function, at each step our policy will select the state with the biggest value defined by the value function: -7, then -6, then -5 (and so on) to attain the goal.}
+
+Thanks to our value function, at each step our policy will select the state with the biggest value defined by the value function: -7, then -6, then -5 (and so on) to attain the goal.
+
+If we recap:
+
+\CourseFigure{vbm_1.jpg}{Value-based reinforcement learning: value-function overview}
+
+\CourseFigure{vbm_2.jpg}{Value-based methods: selecting actions using state values}
+
+\section{The ``Deep'' in Reinforcement Learning}\label{the-deep-in-reinforcement-learning}
+
+\begin{quote}
+\textbf{Course note.} What we've talked about so far is Reinforcement Learning. But where does the ``Deep'' come into play?
+\end{quote}
+
+Deep Reinforcement Learning introduces \textbf{deep neural networks to solve Reinforcement Learning problems} --- hence the name ``deep''.
+
+For instance, in the next unit, we'll learn about two value-based algorithms: Q-Learning (classic Reinforcement Learning) and then Deep Q-Learning.
+
+You'll see the difference is that, in the first approach, \textbf{we use a traditional algorithm} to create a Q table that helps us find what action to take for each state.
+
+In the second approach, \textbf{we will use a Neural Network} (to approximate the Q value).
+
+\CourseFigure{deep.jpg}{Schema inspired by the Q learning notebook by Udacity}
+
+If you are not familiar with Deep Learning you should definitely watch \href{https://course.fast.ai}{the FastAI Practical Deep Learning for Coders} (Free).
+
+\section{Summary}\label{summary}
+
+That was a lot of information! Let's summarize:
+
+\begin{itemize}
+\item
+  Reinforcement Learning is a computational approach of learning from actions. We build an agent that learns from the environment \textbf{by interacting with it through trial and error} and receiving rewards (negative or positive) as feedback.
+\item
+  The goal of any RL agent is to maximize its expected cumulative reward (also called expected return) because RL is based on the \textbf{reward hypothesis}, which is that \textbf{all goals can be described as the maximization of the expected cumulative reward.}
+\item
+  The RL process is a loop that outputs a sequence of \textbf{state, action, reward and next state.}
+\item
+  To calculate the expected cumulative reward (expected return), we discount the rewards: the rewards that come sooner (at the beginning of the game) \textbf{are more probable to happen since they are more predictable than the long term future reward.}
+\item
+  To solve an RL problem, you want to \textbf{find an optimal policy}. The policy is the ``brain'' of your agent, which will tell us \textbf{what action to take given a state.} The optimal policy is the one which \textbf{gives you the actions that maximize the expected return.}
+\item
+  There are two ways to find your optimal policy:
+
+  \begin{enumerate}
+  \def\labelenumi{\arabic{enumi}.}
+  \tightlist
+  \item
+    By training your policy directly: \textbf{policy-based methods.}
+  \item
+    By training a value function that tells us the expected return the agent will get at each state and use this function to define our policy: \textbf{value-based methods.}
+  \end{enumerate}
+\item
+  Finally, we speak about Deep RL because we introduce \textbf{deep neural networks to estimate the action to take (policy-based) or to estimate the value of a state (value-based)} hence the name ``deep''.
+\end{itemize}
+
+\section{Glossary}\label{glossary}
+
+This is a community-created glossary. Contributions are welcome!
+
+\subsubsection{Agent}\label{agent}
+
+An agent learns to \textbf{make decisions by trial and error, with rewards and punishments from the surroundings}.
+
+\subsubsection{Environment}\label{environment}
+
+An environment is a simulated world \textbf{where an agent can learn by interacting with it}.
+
+\subsubsection{Markov Property}\label{markov-property-1}
+
+It implies that the action taken by our agent is \textbf{conditional solely on the present state and independent of the past states and actions}.
+
+\subsubsection{Observations/State}\label{observationsstate}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{State}: Complete description of the state of the world.
+\item
+  \textbf{Observation}: Partial description of the state of the environment/world.
+\end{itemize}
+
+\subsubsection{Actions}\label{actions}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Discrete Actions}: Finite number of actions, such as left, right, up, and down.
+\item
+  \textbf{Continuous Actions}: Infinite possibility of actions; for example, in the case of self-driving cars, the driving scenario has an infinite possibility of actions occurring.
+\end{itemize}
+
+\subsubsection{Rewards and Discounting}\label{rewards-and-discounting}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Rewards}: Fundamental factor in RL. Tells the agent whether the action taken is good/bad.
+\item
+  RL algorithms are focused on maximizing the \textbf{cumulative reward}.
+\item
+  \textbf{Reward Hypothesis}: RL problems can be formulated as a maximisation of (cumulative) return.
+\item
+  \textbf{Discounting} is performed because rewards obtained at the start are more likely to happen as they are more predictable than long-term rewards.
+\end{itemize}
+
+\subsubsection{Tasks}\label{tasks}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Episodic}: Has a starting point and an ending point.
+\item
+  \textbf{Continuous}: Has a starting point but no ending point.
+\end{itemize}
+
+\subsubsection{Exploration v/s Exploitation Trade-Off}\label{exploration-vs-exploitation-trade-off}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Exploration}: It's all about exploring the environment by trying random actions and receiving feedback/returns/rewards from the environment.
+\item
+  \textbf{Exploitation}: It's about exploiting what we know about the environment to gain maximum rewards.
+\item
+  \textbf{Exploration-Exploitation Trade-Off}: It balances how much we want to \textbf{explore} the environment and how much we want to \textbf{exploit} what we know about the environment.
+\end{itemize}
+
+\subsubsection{Policy}\label{policy}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Policy}: It is called the agent's brain. It tells us what action to take, given the state.
+\item
+  \textbf{Optimal Policy}: Policy that \textbf{maximizes} the \textbf{expected return} when an agent acts according to it. It is learned through \emph{training}.
+\end{itemize}
+
+\subsubsection{Policy-based Methods:}\label{policy-based-methods-1}
+
+\begin{itemize}
+\tightlist
+\item
+  An approach to solving RL problems.
+\item
+  In this method, the Policy is learned directly.
+\item
+  Will map each state to the best corresponding action at that state. Or a probability distribution over the set of possible actions at that state.
+\end{itemize}
+
+\subsubsection{Value-based Methods:}\label{value-based-methods-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Another approach to solving RL problems.
+\item
+  Here, instead of training a policy, we train a \textbf{value function} that maps each state to the expected value of being in that state.
+\end{itemize}
+
+Contributions are welcome
+
+If you want to improve the course, you can \href{https://github.com/huggingface/deep-rl-class/pulls}{open a Pull Request.}
+
+This glossary was made possible thanks to:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/lucifermorningstar1305}{@lucifermorningstar1305}
+\item
+  \href{https://github.com/daspartho}{@daspartho}
+\item
+  \href{https://github.com/misza222}{@misza222}
+\end{itemize}
+
+\section{Train your first Deep Reinforcement Learning Agent}\label{train-your-first-deep-reinforcement-learning-agent}
+
+Original notebook: \url{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/main/notebooks/unit1/unit1.ipynb}
+
+Now that you've studied the bases of Reinforcement Learning, you're ready to train your first agent and share it with the community through the Hub : A Lunar Lander agent that will learn to land correctly on the Moon
+
+\CourseFigure{lunarLander-still.jpg}{LunarLander environment: static scene from the official course thumbnail; the original animation is linked below (\href{https://huggingface.co/datasets/huggingface-deep-rl-course/course-images/resolve/main/en/unit1/lunarLander.gif}{original GIF})}
+
+And finally, you'll \textbf{upload this trained agent to the Hugging Face Hub , a free, open platform where people can share ML models, datasets, and demos.}
+
+Thanks to our \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{leaderboard}, you'll be able to compare your results with other classmates and exchange the best practices to improve your agent's scores. Who will win the challenge for Unit 1 ?
+
+To validate this hands-on for the \href{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}{certification process}, you need to push your trained model to the Hub and \textbf{get a result of \textgreater= 200}.
+
+To find your result, go to the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{leaderboard} and find your model, \textbf{the result = mean\_reward - std of reward}
+
+\textbf{If you don't find your model, go to the bottom of the page and click on the refresh button.}
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}
+
+And you can check your progress here \url{https://huggingface.co/spaces/ThomasSimonini/Check-my-progress-Deep-RL-Course}
+
+So let's get started!
+
+\textbf{To start the hands-on click on Open In Colab button} :
+
+\href{https://colab.research.google.com/github/huggingface/deep-rl-class/blob/master/notebooks/unit1/unit1.ipynb}{Open original notebook in Google Colab}
+
+We strongly \textbf{recommend students use Google Colab for the hands-on exercises} instead of running them on their personal computers.
+
+By using Google Colab, \textbf{you can focus on learning and experimenting without worrying about the technical aspects} of setting up your environments.
+
+\section{Unit 1: Train your first Deep Reinforcement Learning Agent}\label{unit-1-train-your-first-deep-reinforcement-learning-agent}
+
+\CourseFigure{thumbnail.jpg}{Unit 1: Introduction to Deep Reinforcement Learning (official course illustration)}
+
+In this notebook, you'll train your \textbf{first Deep Reinforcement Learning agent} a Lunar Lander agent that will learn to \textbf{land correctly on the Moon }. Using \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable-Baselines3} a Deep Reinforcement Learning library, share them with the community, and experiment with different configurations
+
+\subsubsection{The environment}\label{the-environment}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://gymnasium.farama.org/environments/box2d/lunar_lander/}{LunarLander-v2}
+\end{itemize}
+
+\subsubsection{The library used}\label{the-library-used}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable-Baselines3}
+\end{itemize}
+
+We're constantly trying to improve our tutorials, so \textbf{if you find some issues in this notebook}, please \href{https://github.com/huggingface/deep-rl-class/issues}{open an issue on the Github Repo}.
+
+\subsection{Objectives of this notebook}\label{objectives-of-this-notebook}
+
+At the end of the notebook, you will:
+
+\begin{itemize}
+\tightlist
+\item
+  Be able to use \textbf{Gymnasium}, the environment library.
+\item
+  Be able to use \textbf{Stable-Baselines3}, the deep reinforcement learning library.
+\item
+  Be able to \textbf{push your trained agent to the Hub} with a nice video replay and an evaluation score .
+\end{itemize}
+
+\subsection{This notebook is from Deep Reinforcement Learning Course}\label{this-notebook-is-from-deep-reinforcement-learning-course}
+
+\CourseFigure{deep-rl-course-illustration.jpg}{Deep Reinforcement Learning Course overview}
+
+In this free course, you will:
+
+\begin{itemize}
+\tightlist
+\item
+  Study Deep Reinforcement Learning in \textbf{theory and practice}.
+\item
+  Learn to \textbf{use famous Deep RL libraries} such as Stable Baselines3, RL Baselines3 Zoo, CleanRL and Sample Factory 2.0.
+\item
+  Train \textbf{agents in unique environments}
+\item
+  \textbf{Earn a certificate of completion} by completing 80\% of the assignments.
+\end{itemize}
+
+And more!
+
+Check the syllabus \url{https://simoninithomas.github.io/deep-rl-course}
+
+Don't forget to \textbf{\href{http://eepurl.com/ic5ZUD}{sign up to the course}} (we are collecting your email to be able to \textbf{send you the links when each Unit is published and give you information about the challenges and updates).}
+
+The best way to keep in touch and ask questions is \textbf{to join our discord server} to exchange with the community and with us \url{https://discord.gg/ydHrjt3WP5}
+
+\subsection{Prerequisites}\label{prerequisites}
+
+Before diving into the notebook, you need to:
+
+\textbf{\href{https://huggingface.co/deep-rl-course/unit0/introduction}{Read Unit 0}} that gives you all the \textbf{information about the course and helps you to onboard}
+
+\textbf{Develop an understanding of the foundations of Reinforcement learning} (MC, TD, Rewards hypothesis\ldots) by \href{https://huggingface.co/deep-rl-course/unit1/introduction}{reading Unit 1}.
+
+\subsection{A small recap of Deep Reinforcement Learning}\label{a-small-recap-of-deep-reinforcement-learning}
+
+\CourseFigure{RL_process_game.jpg}{RL interaction cycle illustrated with a video-game environment}
+
+Let's do a small recap on what we learned in the first Unit:
+
+\begin{itemize}
+\item
+  Reinforcement Learning is a \textbf{computational approach to learning from actions}. We build an agent that learns from the environment by \textbf{interacting with it through trial and error} and receiving rewards (negative or positive) as feedback.
+\item
+  The goal of any RL agent is to \textbf{maximize its expected cumulative reward} (also called expected return) because RL is based on the \emph{reward hypothesis}, which is that all goals can be described as the maximization of an expected cumulative reward.
+\item
+  The RL process is a \textbf{loop that outputs a sequence of state, action, reward, and next state}.
+\item
+  To calculate the expected cumulative reward (expected return), \textbf{we discount the rewards}: the rewards that come sooner (at the beginning of the game) are more probable to happen since they are more predictable than the long-term future reward.
+\item
+  To solve an RL problem, you want to \textbf{find an optimal policy}; the policy is the ``brain'' of your AI that will tell us what action to take given a state. The optimal one is the one that gives you the actions that max the expected return.
+\end{itemize}
+
+There are \textbf{two} ways to find your optimal policy:
+
+\begin{itemize}
+\item
+  By \textbf{training your policy directly}: policy-based methods.
+\item
+  By \textbf{training a value function} that tells us the expected return the agent will get at each state and use this function to define our policy: value-based methods.
+\item
+  Finally, we spoke about Deep RL because \textbf{we introduce deep neural networks to estimate the action to take (policy-based) or to estimate the value of a state (value-based) hence the name ``deep.''}
+\end{itemize}
+
+\section{Let's train our first Deep Reinforcement Learning agent and upload it to the Hub}\label{lets-train-our-first-deep-reinforcement-learning-agent-and-upload-it-to-the-hub}
+
+\subsection{Get a certificate}\label{get-a-certificate}
+
+To validate this hands-on for the \href{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}{certification process}, you need to push your trained model to the Hub and \textbf{get a result of \textgreater= 200}.
+
+To find your result, go to the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{leaderboard} and find your model, \textbf{the result = mean\_reward - std of reward}
+
+For more information about the certification process, check this section \url{https://huggingface.co/deep-rl-course/en/unit0/introduction\#certification-process}
+
+\subsection{Set the GPU}\label{set-the-gpu}
+
+\begin{itemize}
+\tightlist
+\item
+  To \textbf{accelerate the agent's training, we'll use a GPU}. To do that, go to \passthrough{\lstinline!Runtime > Change Runtime type!}
+\end{itemize}
+
+\CourseFigure{gpu-step1.jpg}{Google Colab menu for changing the runtime type}
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!Hardware Accelerator > GPU!}
+\end{itemize}
+
+\CourseFigure{gpu-step2.jpg}{Google Colab GPU hardware accelerator selection}
+
+\subsection{Install dependencies and create a virtual screen}\label{install-dependencies-and-create-a-virtual-screen}
+
+The first step is to install the dependencies, we'll install multiple ones.
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!gymnasium[box2d]!}: Contains the LunarLander-v2 environment
+\item
+  \passthrough{\lstinline!stable-baselines3[extra]!}: The deep reinforcement learning library.
+\item
+  \passthrough{\lstinline!huggingface_sb3!}: Additional code for Stable-baselines3 to load and upload models from the Hugging Face Hub.
+\end{itemize}
+
+To make things easier, we created a script to install all these dependencies.
+
+\begin{lstlisting}[language=bash]
+apt install swig cmake
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash]
+pip install -r https://raw.githubusercontent.com/huggingface/deep-rl-class/main/notebooks/unit1/requirements-unit1.txt
+\end{lstlisting}
+
+During the notebook, we'll need to generate a replay video. To do so, with colab, \textbf{we need to have a virtual screen to be able to render the environment} (and thus record the frames).
+
+Hence the following cell will install virtual screen libraries and create and run a virtual screen
+
+\begin{lstlisting}[language=bash]
+sudo apt-get update
+apt install python3-opengl
+apt install ffmpeg
+apt install xvfb
+pip3 install pyvirtualdisplay
+\end{lstlisting}
+
+To make sure the new installed libraries are used, \textbf{sometimes it's required to restart the notebook runtime}. The next cell will force the \textbf{runtime to crash, so you'll need to connect again and run the code starting from here}. Thanks to this trick, \textbf{we will be able to run our virtual screen.}
+
+\begin{lstlisting}[language=Python]
+import os
+
+os.kill(os.getpid(), 9)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+# Virtual display
+from pyvirtualdisplay import Display
+
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+\end{lstlisting}
+
+\subsection{Import the packages}\label{import-the-packages}
+
+One additional library we import is huggingface\_hub \textbf{to be able to upload and download trained models from the hub}.
+
+The Hugging Face Hub works as a central place where anyone can share and explore models and datasets. It has versioning, metrics, visualizations and other features that will allow you to easily collaborate with others.
+
+You can see here all the Deep reinforcement Learning models available here \url{https://huggingface.co/models?pipeline_tag=reinforcement-learning&sort=downloads}
+
+\begin{lstlisting}[language=Python]
+import gymnasium
+
+from huggingface_sb3 import load_from_hub, package_to_hub
+from huggingface_hub import (
+    notebook_login,
+)  # To log to our Hugging Face account to be able to upload models to the Hub.
+
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.monitor import Monitor
+\end{lstlisting}
+
+\subsection{Understand Gymnasium and how it works}\label{understand-gymnasium-and-how-it-works}
+
+The library containing our environment is called Gymnasium. \textbf{You'll use Gymnasium a lot in Deep Reinforcement Learning.}
+
+Gymnasium is the \textbf{new version of Gym library} \href{https://farama.org/}{maintained by the Farama Foundation}.
+
+The Gymnasium library provides two things:
+
+\begin{itemize}
+\tightlist
+\item
+  An interface that allows you to \textbf{create RL environments}.
+\item
+  A \textbf{collection of environments} (gym-control, atari, box2D\ldots).
+\end{itemize}
+
+Let's look at an example, but first let's recall the RL loop.
+
+\CourseFigure{RL_process_game.jpg}{RL interaction cycle illustrated with a video-game environment}
+
+At each step:
+
+\begin{itemize}
+\tightlist
+\item
+  Our Agent receives a \textbf{state (S0)} from the \textbf{Environment} --- we receive the first frame of our game (Environment).
+\item
+  Based on that \textbf{state (S0),} the Agent takes an \textbf{action (A0)} --- our Agent will move to the right.
+\item
+  The environment transitions to a \textbf{new} \textbf{state (S1)} --- new frame.
+\item
+  The environment gives some \textbf{reward (R1)} to the Agent --- we're not dead \emph{(Positive Reward +1)}.
+\end{itemize}
+
+With Gymnasium:
+
+1 We create our environment using \passthrough{\lstinline!gymnasium.make()!}
+
+2 We reset the environment to its initial state with \passthrough{\lstinline!observation = env.reset()!}
+
+At each step:
+
+3 Get an action using our model (in our example we take a random action)
+
+4 Using \passthrough{\lstinline!env.step(action)!}, we perform this action in the environment and get
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!observation!}: The new state (st+1)
+\item
+  \passthrough{\lstinline!reward!}: The reward we get after executing the action
+\item
+  \passthrough{\lstinline!terminated!}: Indicates if the episode terminated (agent reach the terminal state)
+\item
+  \passthrough{\lstinline!truncated!}: Introduced with this new version, it indicates a timelimit or if an agent go out of bounds of the environment for instance.
+\item
+  \passthrough{\lstinline!info!}: A dictionary that provides additional information (depends on the environment).
+\end{itemize}
+
+For more explanations check this \url{https://gymnasium.farama.org/api/env/\#gymnasium.Env.step}
+
+If the episode is terminated:
+
+\begin{itemize}
+\tightlist
+\item
+  We reset the environment to its initial state with \passthrough{\lstinline!observation = env.reset()!}
+\end{itemize}
+
+\textbf{Let's look at an example!} Make sure to read the code
+
+\begin{lstlisting}[language=Python]
+import gymnasium as gym
+
+# First, we create our environment called LunarLander-v2
+env = gym.make("LunarLander-v2")
+
+# Then we reset this environment
+observation, info = env.reset()
+
+for _ in range(20):
+    # Take a random action
+    action = env.action_space.sample()
+    print("Action taken:", action)
+
+    # Do this action in the environment and get
+    # next_state, reward, terminated, truncated and info
+    observation, reward, terminated, truncated, info = env.step(action)
+
+    # If the game is terminated (in our case we land, crashed) or truncated (timeout)
+    if terminated or truncated:
+        # Reset the environment
+        print("Environment is reset")
+        observation, info = env.reset()
+
+env.close()
+\end{lstlisting}
+
+\subsection{Create the LunarLander environment and understand how it works}\label{create-the-lunarlander-environment-and-understand-how-it-works}
+
+\subsubsection{The environment}\label{the-environment-1}
+
+In this first tutorial, we're going to train our agent, a \href{https://gymnasium.farama.org/environments/box2d/lunar_lander/}{Lunar Lander}, \textbf{to land correctly on the moon}. To do that, the agent needs to learn \textbf{to adapt its speed and position (horizontal, vertical, and angular) to land correctly.}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+A good habit when you start to use an environment is to check its documentation
+
+\url{https://gymnasium.farama.org/environments/box2d/lunar_lander/}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Let's see what the Environment looks like:
+
+\begin{lstlisting}[language=Python]
+# We create our environment with gym.make("<name_of_the_environment>")
+env = gym.make("LunarLander-v2")
+env.reset()
+print("_____OBSERVATION SPACE_____ \n")
+print("Observation Space Shape", env.observation_space.shape)
+print("Sample observation", env.observation_space.sample())  # Get a random observation
+\end{lstlisting}
+
+We see with \passthrough{\lstinline!Observation Space Shape (8,)!} that the observation is a vector of size 8, where each value contains different information about the lander:
+
+\begin{itemize}
+\tightlist
+\item
+  Horizontal pad coordinate (x)
+\item
+  Vertical pad coordinate (y)
+\item
+  Horizontal speed (x)
+\item
+  Vertical speed (y)
+\item
+  Angle
+\item
+  Angular speed
+\item
+  If the left leg contact point has touched the land (boolean)
+\item
+  If the right leg contact point has touched the land (boolean)
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+print("\n _____ACTION SPACE_____ \n")
+print("Action Space Shape", env.action_space.n)
+print("Action Space Sample", env.action_space.sample())  # Take a random action
+\end{lstlisting}
+
+The action space (the set of possible actions the agent can take) is discrete with 4 actions available :
+
+\begin{itemize}
+\tightlist
+\item
+  Action 0: Do nothing,
+\item
+  Action 1: Fire left orientation engine,
+\item
+  Action 2: Fire the main engine,
+\item
+  Action 3: Fire right orientation engine.
+\end{itemize}
+
+Reward function (the function that will give a reward at each timestep) :
+
+After every step a reward is granted. The total reward of an episode is the \textbf{sum of the rewards for all the steps within that episode}.
+
+For each step, the reward:
+
+\begin{itemize}
+\tightlist
+\item
+  Is increased/decreased the closer/further the lander is to the landing pad.
+\item
+  Is increased/decreased the slower/faster the lander is moving.
+\item
+  Is decreased the more the lander is tilted (angle not horizontal).
+\item
+  Is increased by 10 points for each leg that is in contact with the ground.
+\item
+  Is decreased by 0.03 points each frame a side engine is firing.
+\item
+  Is decreased by 0.3 points each frame the main engine is firing.
+\end{itemize}
+
+The episode receive an \textbf{additional reward of -100 or +100 points for crashing or landing safely respectively.}
+
+An episode is \textbf{considered a solution if it scores at least 200 points.}
+
+\paragraph{Vectorized Environment}\label{vectorized-environment}
+
+\begin{itemize}
+\tightlist
+\item
+  We create a vectorized environment (a method for stacking multiple independent environments into a single environment) of 16 environments, this way, \textbf{we'll have more diverse experiences during the training.}
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+# Create the environment
+env = make_vec_env("LunarLander-v2", n_envs=16)
+\end{lstlisting}
+
+\subsection{Create the Model}\label{create-the-model}
+
+\begin{itemize}
+\item
+  We have studied our environment and we understood the problem: \textbf{being able to land the Lunar Lander to the Landing Pad correctly by controlling left, right and main orientation engine}. Now let's build the algorithm we're going to use to solve this Problem .
+\item
+  To do so, we're going to use our first Deep RL library, \href{https://stable-baselines3.readthedocs.io/en/master/}{Stable Baselines3 (SB3)}.
+\item
+  SB3 is a set of \textbf{reliable implementations of reinforcement learning algorithms in PyTorch}.
+\end{itemize}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+A good habit when using a new library is to dive first on the documentation: \url{https://stable-baselines3.readthedocs.io/en/master/} and then try some tutorials.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\CourseFigure{sb3.png}{Stable-Baselines3 library illustration}
+
+To solve this problem, we're going to use SB3 \textbf{PPO}. \href{https://stable-baselines3.readthedocs.io/en/master/modules/ppo.html\#example\%5D}{PPO (aka Proximal Policy Optimization) is one of the SOTA (state of the art) Deep Reinforcement Learning algorithms that you'll study during this course}.
+
+PPO is a combination of:
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Value-based reinforcement learning method}: learning an action-value function that will tell us the \textbf{most valuable action to take given a state and action}.
+\item
+  \emph{Policy-based reinforcement learning method}: learning a policy that will \textbf{give us a probability distribution over actions}.
+\end{itemize}
+
+Stable-Baselines3 is easy to set up:
+
+1 You \textbf{create your environment} (in our case it was done above)
+
+2 You define the \textbf{model you want to use and instantiate this model} \passthrough{\lstinline!model = PPO("MlpPolicy")!}
+
+3 You \textbf{train the agent} with \passthrough{\lstinline!model.learn!} and define the number of training timesteps
+
+\begin{lstlisting}
+# Create environment
+env = gym.make('LunarLander-v2')
+
+# Instantiate the agent
+model = PPO('MlpPolicy', env, verbose=1)
+# Train the agent
+model.learn(total_timesteps=int(2e5))
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+# TODO: Define a PPO MlpPolicy architecture
+# We use MultiLayerPerceptron (MLPPolicy) because the input is a vector,
+# if we had frames as input we would use CnnPolicy
+model =
+\end{lstlisting}
+
+\paragraph{Solution}\label{solution}
+
+\begin{lstlisting}[language=Python]
+# SOLUTION
+# We added some parameters to accelerate the training
+model = PPO(
+    policy="MlpPolicy",
+    env=env,
+    n_steps=1024,
+    batch_size=64,
+    n_epochs=4,
+    gamma=0.999,
+    gae_lambda=0.98,
+    ent_coef=0.01,
+    verbose=1,
+)
+\end{lstlisting}
+
+\subsection{Train the PPO agent}\label{train-the-ppo-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  Let's train our agent for 1,000,000 timesteps, don't forget to use GPU on Colab. It will take approximately \textasciitilde20min, but you can use fewer timesteps if you just want to try it out.
+\item
+  During the training, take a break you deserved it
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+# TODO: Train it for 1,000,000 timesteps
+# TODO: Specify file name for model and save the model to file
+model_name = "ppo-LunarLander-v2"
+\end{lstlisting}
+
+\paragraph{Solution}\label{solution-1}
+
+\begin{lstlisting}[language=Python]
+# SOLUTION
+# Train it for 1,000,000 timesteps
+model.learn(total_timesteps=1000000)
+# Save the model
+model_name = "ppo-LunarLander-v2"
+model.save(model_name)
+\end{lstlisting}
+
+\subsection{Evaluate the agent}\label{evaluate-the-agent}
+
+\begin{itemize}
+\tightlist
+\item
+  Remember to wrap the environment in a \href{https://stable-baselines3.readthedocs.io/en/master/common/monitor.html}{Monitor}.
+\item
+  Now that our Lunar Lander agent is trained , we need to \textbf{check its performance}.
+\item
+  Stable-Baselines3 provides a method to do that: \passthrough{\lstinline!evaluate_policy!}.
+\item
+  To fill that part you need to \href{https://stable-baselines3.readthedocs.io/en/master/guide/examples.html\#basic-usage-training-saving-loading}{check the documentation}
+\item
+  In the next step, we'll see \textbf{how to automatically evaluate and share your agent to compete in a leaderboard, but for now let's do it ourselves}
+\end{itemize}
+
+When you evaluate your agent, you should not use your training environment but create an evaluation environment.
+
+\begin{lstlisting}[language=Python]
+# TODO: Evaluate the agent
+# Create a new environment for evaluation
+eval_env =
+
+# Evaluate the model with 10 evaluation episodes and deterministic=True
+mean_reward, std_reward = 
+
+# Print the results
+\end{lstlisting}
+
+\paragraph{Solution}\label{solution-2}
+
+\begin{lstlisting}[language=Python]
+# @title
+eval_env = Monitor(gym.make("LunarLander-v2"))
+mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=10, deterministic=True)
+print(f"mean_reward={mean_reward:.2f} +/- {std_reward}")
+\end{lstlisting}
+
+\begin{itemize}
+\tightlist
+\item
+  In my case, I got a mean reward of \passthrough{\lstinline!200.20 +/- 20.80!} after training for 1 million steps, which means that our lunar lander agent is ready to land on the moon .
+\end{itemize}
+
+\subsection{Publish our trained model on the Hub}\label{publish-our-trained-model-on-the-hub}
+
+Now that we saw we got good results after the training, we can publish our trained model on the hub with one line of code.
+
+The libraries documentation \url{https://github.com/huggingface/huggingface_sb3/tree/main\#hugging-face--x-stable-baselines3-v20}
+
+Here's an example of a Model Card (with Space Invaders):
+
+By using \passthrough{\lstinline!package_to_hub!} \textbf{you evaluate, record a replay, generate a model card of your agent and push it to the hub}.
+
+This way:
+
+\begin{itemize}
+\tightlist
+\item
+  You can \textbf{showcase our work}
+\item
+  You can \textbf{visualize your agent playing}
+\item
+  You can \textbf{share with the community an agent that others can use}
+\item
+  You can \textbf{access a leaderboard to see how well your agent is performing compared to your classmates} \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}
+\end{itemize}
+
+To be able to share your model with the community there are three more steps to follow:
+
+1 (If it's not already done) create an account on Hugging Face \url{https://huggingface.co/join}
+
+2 Sign in and then, you need to store your authentication token from the Hugging Face website.
+
+\begin{itemize}
+\tightlist
+\item
+  Create a new token (\url{https://huggingface.co/settings/tokens}) \textbf{with write role}
+\end{itemize}
+
+\CourseFigure{create-token.jpg}{Create a Hugging Face Hub token with write permission}
+
+\begin{itemize}
+\tightlist
+\item
+  Copy the token
+\item
+  Run the cell below and paste the token
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+notebook_login()
+!git config --global credential.helper store
+\end{lstlisting}
+
+If you don't want to use a Google Colab or a Jupyter Notebook, you need to use this command instead: \passthrough{\lstinline!huggingface-cli login!}
+
+3 We're now ready to push our trained agent to the Hub using \passthrough{\lstinline!package_to_hub()!} function
+
+Let's fill the \passthrough{\lstinline!package_to_hub!} function:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!model!}: our trained model.
+\item
+  \passthrough{\lstinline!model_name!}: the name of the trained model that we defined in \passthrough{\lstinline!model_save!}
+\item
+  \passthrough{\lstinline!model_architecture!}: the model architecture we used, in our case PPO
+\item
+  \passthrough{\lstinline!env_id!}: the name of the environment, in our case \passthrough{\lstinline!LunarLander-v2!}
+\item
+  \passthrough{\lstinline!eval_env!}: the evaluation environment defined in eval\_env
+\item
+  \passthrough{\lstinline!repo_id!}: the name of the Hugging Face Hub Repository that will be created/updated \passthrough{\lstinline!(repo_id = \{username\}/\{repo_name\})!}
+\end{itemize}
+
+\textbf{A good name is \passthrough{\lstinline!\{username\}/\{model_architecture\}-\{env_id\}!} }
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!commit_message!}: message of the commit
+\end{itemize}
+
+\begin{lstlisting}[language=Python]
+import gymnasium as gym
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.env_util import make_vec_env
+
+from huggingface_sb3 import package_to_hub
+
+## TODO: Define a repo_id
+## repo_id is the id of the model repository from the Hugging Face Hub (repo_id = {organization}/{repo_name} for instance ThomasSimonini/ppo-LunarLander-v2
+repo_id = 
+
+# TODO: Define the name of the environment
+env_id = 
+
+# Create the evaluation env and set the render_mode="rgb_array"
+eval_env = DummyVecEnv([lambda: gym.make(env_id, render_mode="rgb_array")])
+
+
+# TODO: Define the model architecture we used
+model_architecture = ""
+
+## TODO: Define the commit message
+commit_message = ""
+
+# method save, evaluate, generate a model card and record a replay video of your agent before pushing the repo to the hub
+package_to_hub(model=model, # Our trained model
+               model_name=model_name, # The name of our trained model 
+               model_architecture=model_architecture, # The model architecture we used: in our case PPO
+               env_id=env_id, # Name of the environment
+               eval_env=eval_env, # Evaluation Environment
+               repo_id=repo_id, # id of the model repository from the Hugging Face Hub (repo_id = {organization}/{repo_name} for instance ThomasSimonini/ppo-LunarLander-v2
+               commit_message=commit_message)
+\end{lstlisting}
+
+\paragraph{Solution}\label{solution-3}
+
+\begin{lstlisting}[language=Python]
+import gymnasium as gym
+
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.env_util import make_vec_env
+
+from huggingface_sb3 import package_to_hub
+
+# PLACE the variables you've just defined two cells above
+# Define the name of the environment
+env_id = "LunarLander-v2"
+
+# TODO: Define the model architecture we used
+model_architecture = "PPO"
+
+## Define a repo_id
+## repo_id is the id of the model repository from the Hugging Face Hub (repo_id = {organization}/{repo_name} for instance ThomasSimonini/ppo-LunarLander-v2
+## CHANGE WITH YOUR REPO ID
+repo_id = "ThomasSimonini/ppo-LunarLander-v2"  # Change with your repo id, you can't push with mine :)
+
+## Define the commit message
+commit_message = "Upload PPO LunarLander-v2 trained agent"
+
+# Create the evaluation env and set the render_mode="rgb_array"
+eval_env = DummyVecEnv([lambda: Monitor(gym.make(env_id, render_mode="rgb_array"))])
+
+# PLACE the package_to_hub function you've just filled here
+package_to_hub(
+    model=model,  # Our trained model
+    model_name=model_name,  # The name of our trained model
+    model_architecture=model_architecture,  # The model architecture we used: in our case PPO
+    env_id=env_id,  # Name of the environment
+    eval_env=eval_env,  # Evaluation Environment
+    repo_id=repo_id,  # id of the model repository from the Hugging Face Hub (repo_id = {organization}/{repo_name} for instance ThomasSimonini/ppo-LunarLander-v2
+    commit_message=commit_message,
+)
+\end{lstlisting}
+
+Congrats you've just trained and uploaded your first Deep Reinforcement Learning agent. The script above should have displayed a link to a model repository such as \url{https://huggingface.co/osanseviero/test_sb3}. When you go to this link, you can:
+
+\begin{itemize}
+\tightlist
+\item
+  See a video preview of your agent at the right.
+\item
+  Click ``Files and versions'' to see all the files in the repository.
+\item
+  Click ``Use in stable-baselines3'' to get a code snippet that shows how to load the model.
+\item
+  A model card (\passthrough{\lstinline!README.md!} file) which gives a description of the model
+\end{itemize}
+
+Under the hood, the Hub uses git-based repositories (don't worry if you don't know what git is), which means you can update the model with new versions as you experiment and improve your agent.
+
+Compare the results of your LunarLander-v2 with your classmates using the leaderboard \url{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}
+
+\subsection{Load a saved LunarLander model from the Hub}\label{load-a-saved-lunarlander-model-from-the-hub}
+
+Thanks to \href{https://github.com/ironbar}{ironbar} for the contribution.
+
+Loading a saved model from the Hub is really easy.
+
+You go to \url{https://huggingface.co/models?library=stable-baselines3} to see the list of all the Stable-baselines3 saved models.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  You select one and copy its repo\_id
+\end{enumerate}
+
+\CourseFigure{copy-id.png}{Copy the model repository identifier from Hugging Face Hub}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Then we just need to use load\_from\_hub with:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  The repo\_id
+\item
+  The filename: the saved model inside the repo and its extension (*.zip)
+\end{itemize}
+
+Because the model I download from the Hub was trained with Gym (the former version of Gymnasium) we need to install shimmy a API conversion tool that will help us to run the environment correctly.
+
+Shimmy Documentation: \url{https://github.com/Farama-Foundation/Shimmy}
+
+\begin{lstlisting}[language=Python]
+!pip install shimmy
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python]
+from huggingface_sb3 import load_from_hub
+
+repo_id = "Classroom-workshop/assignment2-omar"  # The repo_id
+filename = "ppo-LunarLander-v2.zip"  # The model filename.zip
+
+# When the model was trained on Python 3.8 the pickle protocol is 5
+# But Python 3.6, 3.7 use protocol 4
+# In order to get compatibility we need to:
+# 1. Install pickle5 (we done it at the beginning of the colab)
+# 2. Create a custom empty object we pass as parameter to PPO.load()
+custom_objects = {
+    "learning_rate": 0.0,
+    "lr_schedule": lambda _: 0.0,
+    "clip_range": lambda _: 0.0,
+}
+
+checkpoint = load_from_hub(repo_id, filename)
+model = PPO.load(checkpoint, custom_objects=custom_objects, print_system_info=True)
+\end{lstlisting}
+
+Let's evaluate this agent:
+
+\begin{lstlisting}[language=Python]
+# @title
+eval_env = Monitor(gym.make("LunarLander-v2"))
+mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=10, deterministic=True)
+print(f"mean_reward={mean_reward:.2f} +/- {std_reward}")
+\end{lstlisting}
+
+\subsection{Some additional challenges}\label{some-additional-challenges}
+
+The best way to learn \textbf{is to try things by your own}! As you saw, the current agent is not doing great. As a first suggestion, you can train for more steps. With 1,000,000 steps, we saw some great results!
+
+In the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{Leaderboard} you will find your agents. Can you get to the top?
+
+Here are some ideas to achieve so:
+
+\begin{itemize}
+\tightlist
+\item
+  Train more steps
+\item
+  Try different hyperparameters for \passthrough{\lstinline!PPO!}. You can see them at \url{https://stable-baselines3.readthedocs.io/en/master/modules/ppo.html\#parameters}.
+\item
+  Check the \href{https://stable-baselines3.readthedocs.io/en/master/modules/dqn.html}{Stable-Baselines3 documentation} and try another model such as DQN.
+\item
+  \textbf{Push your new trained model} on the Hub
+\end{itemize}
+
+\textbf{Compare the results of your LunarLander-v2 with your classmates} using the \href{https://huggingface.co/spaces/huggingface-projects/Deep-Reinforcement-Learning-Leaderboard}{leaderboard}
+
+Is moon landing too boring for you? Try to \textbf{change the environment}, why not use MountainCar-v0, CartPole-v1 or CarRacing-v0? Check how they work \href{https://www.gymlibrary.dev/}{using the gym documentation} and have fun .
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+Congrats on finishing this chapter! That was the biggest one, \textbf{and there was a lot of information.}
+
+If you're still feel confused with all these elements\ldots it's totally normal! \textbf{This was the same for me and for all people who studied RL.}
+
+Take time to really \textbf{grasp the material before continuing and try the additional challenges}. It's important to master these elements and have a solid foundations.
+
+Naturally, during the course, we're going to dive deeper into these concepts but \textbf{it's better to have a good understanding of them now before diving into the next chapters.}
+
+Next time, in the bonus unit 1, you'll train Huggy the Dog to fetch the stick.
+
+\CourseFigure{huggy-notebook.jpg}{Huggy in the virtual training environment}
+
+\subsection{Keep learning, stay awesome}\label{keep-learning-stay-awesome}
+
+\section{Quiz}\label{quiz}
+
+The best way to learn and \href{https://www.coursera.org/lecture/learning-how-to-learn/illusions-of-competence-BuFzf}{to avoid the illusion of competence} \textbf{is to test yourself.} This will help you to find \textbf{where you need to reinforce your knowledge}.
+
+\subsubsection{Q1: What is Reinforcement Learning?}\label{q1-what-is-reinforcement-learning}
+
+\subsubsection{Q2: Define the RL Loop}\label{q2-define-the-rl-loop}
+
+\CourseFigure{rl-loop-ex.jpg}{Quiz exercise: fill in the state, action, next state and reward of the RL loop}
+
+At every step:
+
+\begin{itemize}
+\tightlist
+\item
+  Our Agent receives \_\_\_\_\_\_ from the environment
+\item
+  Based on that \_\_\_\_\_\_ the Agent takes an \_\_\_\_\_\_
+\item
+  Our Agent will move to the right
+\item
+  The Environment goes to a \_\_\_\_\_\_
+\item
+  The Environment gives a \_\_\_\_\_\_ to the Agent
+\end{itemize}
+
+\textbf{Select all correct choices (multiple answers may apply).}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} an action a0, action a0, state s0, state s1, reward r1
+\item
+  \textbf{B.} state s0, state s0, action a0, new state s1, reward r1
+\item
+  \textbf{C.} a state s0, state s0, action a0, state s1, action a1
+\end{itemize}
+
+\subsubsection{Q3: What's the difference between a state and an observation?}\label{q3-whats-the-difference-between-a-state-and-an-observation}
+
+\textbf{Select all correct choices (multiple answers may apply).}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} The state is a complete description of the state of the world (there is no hidden information)
+\item
+  \textbf{B.} The state is a partial description of the state
+\item
+  \textbf{C.} The observation is a complete description of the state of the world (there is no hidden information)
+\item
+  \textbf{D.} The observation is a partial description of the state
+\item
+  \textbf{E.} We receive a state when we play with chess environment
+\item
+  \textbf{F.} We receive an observation when we play with chess environment
+\item
+  \textbf{G.} We receive a state when we play with Super Mario Bros
+\item
+  \textbf{H.} We receive an observation when we play with Super Mario Bros
+\end{itemize}
+
+\subsubsection{Q4: A task is an instance of a Reinforcement Learning problem. What are the two types of tasks?}\label{q4-a-task-is-an-instance-of-a-reinforcement-learning-problem.-what-are-the-two-types-of-tasks}
+
+\textbf{Select all correct choices (multiple answers may apply).}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{A.} Episodic
+\item
+  \textbf{B.} Recursive
+\item
+  \textbf{C.} Adversarial
+\item
+  \textbf{D.} Continuing
+\end{itemize}
+
+\subsubsection{Q5: What is the exploration/exploitation tradeoff?}\label{q5-what-is-the-explorationexploitation-tradeoff}
+
+\subsubsection{Q6: What is a policy?}\label{q6-what-is-a-policy}
+
+\subsubsection{Q7: What are value-based methods?}\label{q7-what-are-value-based-methods}
+
+\subsubsection{Q8: What are policy-based methods?}\label{q8-what-are-policy-based-methods}
+
+\subsection{Answer Key and Explanations}\label{answer-key-and-explanations}
+
+\subsubsection{Q1: What is Reinforcement Learning?}\label{q1-what-is-reinforcement-learning-1}
+
+Reinforcement learning is a \textbf{framework for solving control tasks (also called decision problems)} by building agents that learn from the environment by interacting with it through trial and error and \textbf{receiving rewards (positive or negative) as unique feedback}.
+
+\subsubsection{Q2: Define the RL Loop}\label{q2-define-the-rl-loop-1}
+
+\textbf{Answer:} B
+
+\begin{itemize}
+\item
+  \textbf{Choice A:} At every step: Our Agent receives \textbf{state s0} from the environment. Based on that \textbf{state s0} the Agent takes an \textbf{action a0}. Our Agent will move to the right. The Environment goes to a \textbf{new state s1}. The Environment gives \textbf{a reward r1} to the Agent.
+\item
+  \textbf{Choice C:} At every step: Our Agent receives \textbf{state s0} from the environment. Based on that \textbf{state s0} the Agent takes an \textbf{action a0}. Our Agent will move to the right. The Environment goes to a \textbf{new state s1}. The Environment gives \textbf{a reward r1} to the Agent.
+\end{itemize}
+
+\subsubsection{Q3: What's the difference between a state and an observation?}\label{q3-whats-the-difference-between-a-state-and-an-observation-1}
+
+\textbf{Answer:} A, D, E, H
+
+\begin{itemize}
+\item
+  \textbf{Choice E (correct):} Since we have access to the whole checkboard information.
+\item
+  \textbf{Choice F:} Since we have access to the whole checkboard information.
+\item
+  \textbf{Choice G:} We only see a part of the level close to the player, so we receive an observation.
+\item
+  \textbf{Choice H (correct):} We only see a part of the level close to the player.
+\end{itemize}
+
+\subsubsection{Q4: A task is an instance of a Reinforcement Learning problem. What are the two types of tasks?}\label{q4-a-task-is-an-instance-of-a-reinforcement-learning-problem.-what-are-the-two-types-of-tasks-1}
+
+\textbf{Answer:} A, D
+
+\begin{itemize}
+\item
+  \textbf{Choice A (correct):} In Episodic task, we have a starting point and an ending point (a terminal state). This creates an episode: a list of States, Actions, Rewards, and new States. For instance, think about Super Mario Bros: an episode begin at the launch of a new Mario Level and ending when you're killed or you reached the end of the level.
+\item
+  \textbf{Choice D (correct):} Continuing tasks are tasks that continue forever (no terminal state). In this case, the agent must learn how to choose the best actions and simultaneously interact with the environment.
+\end{itemize}
+
+\subsubsection{Q5: What is the exploration/exploitation tradeoff?}\label{q5-what-is-the-explorationexploitation-tradeoff-1}
+
+In Reinforcement Learning, we need to \textbf{balance how much we explore the environment and how much we exploit what we know about the environment}.
+
+\begin{itemize}
+\item
+  \emph{Exploration} is exploring the environment by \textbf{trying random actions in order to find more information about the environment}.
+\item
+  \emph{Exploitation} is \textbf{exploiting known information to maximize the reward}.
+\end{itemize}
+
+\CourseFigure{expexpltradeoff.jpg}{Exploration versus exploitation: summary diagram}
+
+\subsubsection{Q6: What is a policy?}\label{q6-what-is-a-policy-1}
+
+\begin{itemize}
+\tightlist
+\item
+  The Policy $\pi$ \textbf{is the brain of our Agent}. It's the function that tells us what action to take given the state we are in. So it defines the agent's behavior at a given time.
+\end{itemize}
+
+\CourseFigure{policy_1.jpg}{Policy maps the current state to an action}
+
+\subsubsection{Q7: What are value-based methods?}\label{q7-what-are-value-based-methods-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Value-based methods is one of the main approaches for solving RL problems.
+\item
+  In Value-based methods, instead of training a policy function, \textbf{we train a value function that maps a state to the expected value of being at that state}.
+\end{itemize}
+
+\subsubsection{Q8: What are policy-based methods?}\label{q8-what-are-policy-based-methods-1}
+
+\begin{itemize}
+\tightlist
+\item
+  In \emph{Policy-Based Methods}, we learn a \textbf{policy function directly}.
+\item
+  This policy function will \textbf{map from each state to the best corresponding action at that state}. Or a \textbf{probability distribution over the set of possible actions at that state}.
+\end{itemize}
+
+Congrats on finishing this Quiz , if you missed some elements, take time to read again the chapter to reinforce () your knowledge, but \textbf{do not worry}: during the course we'll go over again of these concepts, and you'll \textbf{reinforce your theoretical knowledge with hands-on}.
+
+\section{Conclusion}\label{conclusion}
+
+Congrats on finishing this unit! \textbf{That was the biggest one}, and there was a lot of information. And congrats on finishing the tutorial. You've just trained your first Deep RL agents and shared them with the community!
+
+It's \textbf{normal if you still feel confused by some of these elements}. This was the same for me and for all people who studied RL.
+
+\textbf{Take time to really grasp the material} before continuing. It's important to master these elements and have a solid foundation before entering the fun part.
+
+Naturally, during the course, we're going to use and explain these terms again, but it's better to understand them before diving into the next units.
+
+In the next (bonus) unit, we're going to reinforce what we just learned by \textbf{training Huggy the Dog to fetch a stick}.
+
+You will then be able to play with him .
+
+\CourseFigure{huggy-bonus.jpg}{Huggy the Dog: training environment shown in the bonus unit}
+
+Finally, we would love \textbf{to hear what you think of the course and how we can improve it}. If you have some feedback then, please \href{https://forms.gle/BzKXWzLAGZESGNaE9}{fill this form}
+
+\subsubsection{Keep Learning, stay awesome}\label{keep-learning-stay-awesome-1}
+
+\section{Additional Readings}\label{additional-readings}
+
+These are \textbf{optional readings} if you want to go deeper.
+
+\subsection{Deep Reinforcement Learning}\label{deep-reinforcement-learning}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{http://incompleteideas.net/book/RLbook2020.pdf}{Reinforcement Learning: An Introduction, Richard Sutton and Andrew G. Barto Chapter 1, 2 and 3}
+\item
+  \href{https://youtu.be/2GwBez0D20A}{Foundations of Deep RL Series, L1 MDPs, Exact Solution Methods, Max-ent RL by Pieter Abbeel}
+\item
+  \href{https://spinningup.openai.com/en/latest/spinningup/rl_intro.html}{Spinning Up RL by OpenAI Part 1: Key concepts of RL}
+\end{itemize}
+
+\subsection{Gym}\label{gym}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://blog.paperspace.com/getting-started-with-openai-gym/}{Getting Started With OpenAI Gym: The Basic Building Blocks}
+\item
+  \href{https://www.gymlibrary.dev/content/environment_creation/}{Make your own Gym custom environment}
+\end{itemize}
+
+\end{document}
