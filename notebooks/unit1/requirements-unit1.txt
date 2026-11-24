@@ -1,4 +1,4 @@
-stable-baselines3==2.0.0a5
+stable-baselines3==2.3.2
+gymnasium[box2d]==0.29.1
+huggingface-sb3==3.0
 swig
-gymnasium[box2d]
-huggingface_sb3

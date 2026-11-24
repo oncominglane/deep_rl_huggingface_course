@@ -1,0 +1,5 @@
+-r notebooks/unit1/requirements-unit1.txt
+-r notebooks/unit2/requirements-unit2.txt
+-r notebooks/unit3/requirements-unit3.txt
+-r notebooks/unit4/requirements-unit4.txt
+ipywidgets

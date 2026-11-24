@@ -54,3 +54,13 @@ desktop.ini
 *.synctex.gz
 *.toc
 
+
+# Unit 3 local environment
+.venv-unit3/
+notebooks/unit3/rl_trained/
+
+# Unit 4 local environment
+.venv-unit4/
+
+# Shared course environment
+venv-main/

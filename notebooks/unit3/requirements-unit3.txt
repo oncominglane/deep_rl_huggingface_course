@@ -1,0 +1,10 @@
+rl-zoo3==2.3.0
+stable-baselines3==2.3.2
+sb3-contrib==2.3.0
+gymnasium[atari,accept-rom-license]==0.29.1
+numpy<2
+huggingface-hub<1
+moviepy<2
+ipykernel
+imageio-ffmpeg
+opencv-python-headless==4.11.0.86

@@ -1,5 +1,12 @@
-git+https://github.com/ntasfi/PyGame-Learning-Environment.git
-git+https://github.com/simoninithomas/gym-games
-huggingface_hub
+numpy==1.26.4
+gym==0.23.1
+pygame==2.6.1
+git+https://github.com/ntasfi/PyGame-Learning-Environment.git@3dbe79dc0c35559bb441b9359948aabf9bb3d331
+git+https://github.com/simoninithomas/gym-games.git@f31695e4ba028400628dc054ee8a436f28193f0b
+huggingface_hub<1
+imageio
 imageio-ffmpeg
-pyyaml==6.0
+matplotlib
+ipykernel
+pyyaml>=6.0
+torch
