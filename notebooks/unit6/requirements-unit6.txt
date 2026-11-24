@@ -1,4 +1,6 @@
-stable-baselines3==2.0.0a4
-huggingface_sb3
-panda-gym
-huggingface_hub
+stable-baselines3==2.3.2
+gymnasium==0.29.1
+huggingface-sb3==3.0
+huggingface-hub<1
+panda-gym==3.0.7
+pybullet==3.2.7
