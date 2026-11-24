@@ -64,3 +64,6 @@ notebooks/unit3/rl_trained/
 
 # Shared course environment
 venv-main/
+
+# Unit 5 downloaded Unity builds
+training-envs-executables/
