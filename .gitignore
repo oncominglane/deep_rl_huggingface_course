@@ -67,3 +67,6 @@ venv-main/
 
 # Unit 5 downloaded Unity builds
 training-envs-executables/
+
+# Sample Factory experiment artifacts
+train_dir/

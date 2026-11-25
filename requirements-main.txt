@@ -4,3 +4,4 @@
 -r notebooks/unit4/requirements-unit4.txt
 ipywidgets
 -r notebooks/unit6/requirements-unit6.txt
+-r notebooks/unit8/requirements-unit8-part1.txt
